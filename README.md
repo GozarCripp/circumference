@@ -1,17 +1,13 @@
-# Circumference: Naked & Uninsured
+# Circumference: Naked & Uninsured (2.5D)
 
-A turn-based, procedurally generated roguelike RPG on a small planet that wraps around. You start with nothing: no gear, no memory. Everything you use has to be found or dropped.
+Work-in-progress 2.5D version of the turn-based, procedurally generated planet roguelike. The original ASCII version is included under `classic/` and lives on `main`.
 
-This is the classic ASCII version, playable on iPad, phone, and desktop. Tap a tile to move, tap again to act.
-
-**Play:** https://gozarcripp.github.io/circumference/
-
-**2.5D version (work in progress):** https://gozarcripp.github.io/circumference/2.5d/ — source is on the `foreverquest-uncircumferenced` branch.
+**Play:** https://gozarcripp.github.io/circumference/2.5d/
 
 ## Run locally
 
     python3 -m http.server
 
-Then open http://localhost:8000. No build step.
+Then open http://localhost:8000. Browsers block modules opened straight from a file, so use a server.
 
 Feedback and bug reports are welcome in Issues.

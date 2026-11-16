@@ -1,0 +1,103 @@
+/* styles/ui.css — ARCHITECT-OWNED. The UI art direction: the title screen's synthwave sunset, turned into chrome.
+   Deep plum glass, neon-pink hairlines, orange hard shadows, baby-blue highlights, Titan One for anything you press
+   or count, Grenze for anything the universe says to you. UI modules USE these classes; module-specific rules go in
+   a <style> injected by that module (ui/dom.js css()), prefixed with the module's root id (#hud, #pop, #panel…). */
+
+:root {
+  --ink: #120826; --ink2: #1b0f3b; --panel: #1d1140; --panel-hi: #2d1458;
+  --line: #ff2fa0; --orange: #ff7a1a; --blue: #8fd3ff; --sun: #ffd23f; --white: #fff;
+  --text: #efe9ff; --dim: #a898c8; --good: #7dff8a; --bad: #ff5d6c; --warn: #ffd23f;
+  --hp: #ff4d6d; --mp: #5b8cff; --xp: #ffd23f;
+  /* rarity (classic colours) */
+  --q-legendary: #ffaa33; --q-masterwork: #66aaff; --q-fine: #77ff77; --q-plain: #dddddd; --q-rusty: #999999;
+  /* consider colours, easiest -> deadliest */
+  --con0: #7dff8a; --con1: #8fd3ff; --con2: #5b8cff; --con3: #ffffff; --con4: #ffd23f; --con5: #ff5d6c;
+  --f-display: 'Titan One', 'Arial Rounded MT Bold', system-ui, sans-serif;
+  --f-flavor: 'Grenze', Georgia, serif;
+  --f-body: ui-rounded, 'SF Pro Rounded', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --r: 14px;
+  --safe-t: env(safe-area-inset-top, 0px); --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-l: env(safe-area-inset-left, 0px); --safe-r: env(safe-area-inset-right, 0px);
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: #08060f; color: var(--text); font-family: var(--f-body); font-size: 14px; touch-action: none; overscroll-behavior: none; }
+#app { position: fixed; inset: 0; overflow: hidden; }
+#world { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; image-rendering: pixelated; image-rendering: crisp-edges; background: #08060f; }
+
+/* ---- shared components ---------------------------------------------------------------- */
+.panel {
+  background: linear-gradient(180deg, rgba(45, 20, 88, .96), rgba(18, 8, 38, .97));
+  border: 2px solid var(--line); border-radius: var(--r);
+  box-shadow: 0 0 0 2px var(--ink), 0 0 18px rgba(255, 47, 160, .35), 0 10px 30px rgba(0, 0, 0, .6);
+  color: var(--text);
+}
+.glass { background: linear-gradient(180deg, rgba(18, 8, 38, .82), rgba(18, 8, 38, .55)); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
+
+.h { font-family: var(--f-display); font-weight: 400; color: var(--white); letter-spacing: .5px; text-shadow: 0 2px 0 var(--orange), 0 0 10px rgba(255, 122, 26, .35); margin: 0; }
+.flavor { font-family: var(--f-flavor); font-size: 1.15em; color: var(--blue); }
+.dim { color: var(--dim); } .good { color: var(--good); } .bad { color: var(--bad); } .warn { color: var(--warn); } .loot { color: var(--sun); }
+.num { font-family: var(--f-display); font-variant-numeric: tabular-nums; }
+
+.btn {
+  font-family: var(--f-display); font-size: 15px; letter-spacing: .5px; color: var(--white);
+  min-height: 44px; padding: 8px 14px; border-radius: 12px; cursor: pointer;
+  background: linear-gradient(180deg, #3a1c74, #24104f); border: 2px solid var(--blue);
+  box-shadow: 0 3px 0 var(--ink), 0 4px 0 var(--orange); text-shadow: 0 1px 0 var(--ink);
+  transition: transform .05s;
+}
+.btn:active { transform: translateY(3px); box-shadow: 0 0 0 var(--ink), 0 1px 0 var(--orange); }
+.btn.primary { background: linear-gradient(180deg, #ff9a3d, #ff6a1a); border-color: var(--white); box-shadow: 0 3px 0 var(--ink), 0 4px 0 var(--line); }
+.btn.danger { background: linear-gradient(180deg, #ff5d6c, #c2253f); border-color: var(--white); }
+.btn.ghost { background: rgba(18, 8, 38, .7); border-color: rgba(143, 211, 255, .45); color: var(--dim); box-shadow: none; }
+.btn.small { min-height: 34px; padding: 4px 10px; font-size: 13px; border-radius: 10px; }
+.btn[disabled] { opacity: .45; pointer-events: none; }
+.btn-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.btn-row .btn { flex: 1 1 auto; }
+
+/* chunky stat bar:  <div class="bar hp"><i style="width:40%"></i><b>12/25</b></div> */
+.bar { position: relative; height: 16px; min-width: 70px; border-radius: 8px; background: #0b0518; border: 2px solid var(--ink); box-shadow: 0 0 0 1px rgba(143, 211, 255, .5); overflow: hidden; }
+.bar > i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 6px 3px 3px 6px; transition: width .18s; background: linear-gradient(180deg, rgba(255, 255, 255, .45) 0 30%, transparent 30%), var(--c, var(--hp)); }
+.bar > b { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font: 11px/1 var(--f-display); color: #fff; text-shadow: 0 1px 0 #000, 0 0 3px #000; letter-spacing: .5px; }
+.bar.hp { --c: var(--hp); } .bar.mp { --c: var(--mp); } .bar.xp { --c: var(--xp); height: 10px; }
+.bar.xp > i { background: linear-gradient(180deg, #fff3a0, var(--xp)); }
+/* five EQ "bubbles": the dividers belong to the bar, not to the fill, so one bubble is always a fifth of a level */
+.bar.xp::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: repeating-linear-gradient(90deg, transparent 0 calc(20% - 2px), rgba(18, 8, 38, .9) calc(20% - 2px) 20%); }
+
+.chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; background: rgba(18, 8, 38, .75); border: 1px solid rgba(143, 211, 255, .4); font-size: 12px; white-space: nowrap; }
+.icon { width: 32px; height: 32px; image-rendering: pixelated; image-rendering: crisp-edges; vertical-align: middle; flex: none; }
+.icon.big { width: 48px; height: 48px; }
+hr.sep { border: 0; border-top: 1px solid rgba(255, 47, 160, .45); margin: 8px 0; }
+
+.q-Legendary { color: var(--q-legendary); } .q-Masterwork { color: var(--q-masterwork); } .q-Fine { color: var(--q-fine); } .q-Plain { color: var(--q-plain); } .q-Rusty { color: var(--q-rusty); }
+.con0 { color: var(--con0); } .con1 { color: var(--con1); } .con2 { color: var(--con2); } .con3 { color: var(--con3); } .con4 { color: var(--con4); } .con5 { color: var(--con5); }
+
+/* ---- layout slots (filled by the UI modules) ---------------------------------------- */
+#hud { position: absolute; left: 0; right: 0; top: 0; padding: calc(6px + var(--safe-t)) calc(8px + var(--safe-r)) 6px calc(8px + var(--safe-l)); pointer-events: none; z-index: 3; }
+#hud > * { pointer-events: auto; }
+#log { position: absolute; left: calc(8px + var(--safe-l)); bottom: calc(64px + var(--safe-b)); width: min(560px, calc(100% - 16px)); pointer-events: none; z-index: 3; font-size: 13px; line-height: 1.35; text-shadow: 0 1px 0 #000, 0 0 4px #000; }
+#hotbar { position: absolute; left: 0; right: 0; bottom: 0; padding: 6px calc(8px + var(--safe-r)) calc(8px + var(--safe-b)) calc(8px + var(--safe-l)); display: flex; gap: 8px; align-items: flex-end; justify-content: center; pointer-events: none; z-index: 3; }
+#hotbar > * { pointer-events: auto; }
+#banner { position: absolute; left: 0; right: 0; top: 22%; text-align: center; pointer-events: none; z-index: 4; }
+#pop { position: absolute; display: none; z-index: 5; min-width: 220px; max-width: min(340px, calc(100vw - 12px)); padding: 12px; font-size: 14px; line-height: 1.45; }
+#panel { position: absolute; inset: 0; display: none; z-index: 6; align-items: center; justify-content: center; background: rgba(8, 4, 20, .6); padding: calc(10px + var(--safe-t)) 10px calc(10px + var(--safe-b)); }
+#panel > .panel { width: min(620px, 100%); max-height: 100%; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 14px; touch-action: pan-y; }
+
+/* ---- title screen (classic, verbatim look) ---------------------------------------------- */
+#title { position: fixed; inset: 0; z-index: 20; background: #120826; cursor: pointer; }
+#title { transition: opacity .5s ease, transform .5s ease; }
+#title.out { opacity: 0; transform: scale(1.06); pointer-events: none; }
+#tc { width: 100%; height: 100%; image-rendering: pixelated; image-rendering: crisp-edges; display: block; }
+#tap { position: absolute; bottom: 9%; width: 100%; text-align: center; color: #fff; font-family: 'Titan One', sans-serif; font-size: 20px; letter-spacing: 2px; text-shadow: 0 0 0 #000, 2px 2px #ff7a1a; animation: bl 1.2s steps(2) infinite; }
+#tip { position: absolute; bottom: 4%; width: 100%; text-align: center; color: #8fd3ff; font-size: 13px; padding: 0 20px; font-family: Menlo, Consolas, monospace; }
+@keyframes bl { 50% { opacity: 0; } }
+
+/* ---- error toast (dev aid; main.js) ------------------------------------------------------- */
+#toast { position: fixed; left: 8px; right: 8px; bottom: 8px; z-index: 99; display: none; padding: 8px 10px; border-radius: 10px; background: #40101cf0; border: 1px solid var(--bad); color: #ffd7dc; font: 12px/1.4 Menlo, Consolas, monospace; white-space: pre-wrap; }
+
+@media (min-width: 700px) {
+  html, body { font-size: 16px; }
+  #log { font-size: 15px; } #pop { font-size: 15px; }
+  .btn { font-size: 16px; }
+}
+@media (prefers-reduced-motion: reduce) { #title { transition: none; } #tap { animation: none; } .bar > i { transition: none; } }

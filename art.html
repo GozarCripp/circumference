@@ -1,0 +1,602 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="description" content="Circumference art gallery: every tile, prop, enemy, NPC, hero layer and item, with the box it has to fit and the path to save to.">
+<title>Circumference — Art Gallery</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="assets/fonts.css">
+<link rel="stylesheet" href="styles/ui.css">
+<style>
+/* Gallery chrome. ui.css locks the game's body (overflow hidden, no selection); this page needs to scroll and let
+   Dave select ids, so the overrides below come after it. Every rule is prefixed #gallery or #gallery-head. */
+html, body { height: auto; min-height: 100%; overflow: auto; touch-action: manipulation; background: #120826; }
+body { margin: 0; }
+#gallery, #gallery * { user-select: text; -webkit-user-select: text; -webkit-touch-callout: default; }
+#gallery [hidden], #gallery-head [hidden], #toast[hidden] { display: none !important; }
+
+#gallery-head {
+  position: sticky; top: 0; z-index: 5;
+  padding: calc(12px + var(--safe-t)) 16px 10px;
+  background: linear-gradient(180deg, #2d1458 0%, #1d1140 70%, rgba(18, 8, 38, .97) 100%);
+  border-bottom: 2px solid var(--line);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, .55);
+}
+#gallery-head h1 { font-size: 24px; line-height: 1.1; }
+#gallery-head .flavor { margin: 4px 0 0; font-size: 16px; }
+#gallery-head .bar-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; }
+#gallery-head .pill {
+  font-family: var(--f-display); font-size: 14px; font-variant-numeric: tabular-nums;
+  padding: 6px 12px; border-radius: 999px; background: #0b0518; border: 2px solid var(--blue); color: var(--sun);
+}
+#gallery-head .btn { flex: 0 0 auto; }
+#gallery-head .scale { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--dim); }
+#gallery-head .scale input { accent-color: var(--orange); width: 112px; margin: 0; }
+#gallery-head output { font-family: var(--f-display); color: var(--sun); min-width: 26px; }
+#gallery-head #q {
+  flex: 1 1 200px; min-width: 0; min-height: 44px; padding: 8px 14px; border-radius: 12px;
+  border: 2px solid rgba(143, 211, 255, .45); background: #0b0518; color: var(--text);
+  font: 16px var(--f-body); outline: none;
+}
+#gallery-head #q:focus { border-color: var(--orange); box-shadow: 0 0 0 3px rgba(255, 122, 26, .25); }
+#gallery-head .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+#gallery-head .chip {
+  min-height: 36px; padding: 6px 12px; border-radius: 999px; cursor: pointer;
+  font-family: var(--f-display); font-size: 13px; letter-spacing: .3px; color: var(--dim);
+  background: rgba(18, 8, 38, .75); border: 2px solid rgba(255, 47, 160, .6);
+}
+#gallery-head .chip[aria-pressed="true"] {
+  color: var(--white); background: linear-gradient(180deg, #ff9a3d, #ff6a1a); border-color: var(--white);
+  text-shadow: 0 1px 0 var(--ink);
+}
+
+#gallery { max-width: 1180px; margin: 0 auto; padding: 6px 16px 48px; }
+#gallery .cat { margin-top: 26px; }
+#gallery .cat > h2 { font-size: 22px; margin: 0 0 4px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+#gallery .grp { margin-top: 12px; }
+#gallery .grp > h3 { font-size: 17px; margin: 0 0 6px; color: var(--blue); display: flex; align-items: center; gap: 8px; }
+#gallery .cnt {
+  font-family: var(--f-display); font-size: 12px; font-variant-numeric: tabular-nums; letter-spacing: .3px;
+  color: var(--sun); background: #0b0518; padding: 2px 9px; border-radius: 999px; border: 1px solid var(--line);
+}
+#gallery .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+
+#gallery .card {
+  min-width: 0; display: flex; flex-direction: column; gap: 5px; padding: 8px;
+  background: linear-gradient(180deg, rgba(45, 20, 88, .92), rgba(18, 8, 38, .96));
+  border: 2px solid rgba(255, 47, 160, .35); border-radius: 14px;
+}
+#gallery .card.is-custom { border-color: var(--good); box-shadow: 0 0 14px rgba(125, 255, 138, .22); }
+#gallery .stage {
+  display: flex; align-items: flex-end; justify-content: center; min-height: 124px; padding: 8px 8px 0;
+  border-radius: 10px; border: 2px solid var(--ink); overflow: hidden; max-width: 100%;
+  background-color: #2a1a4a;
+  background-image: conic-gradient(#3b2868 25%, #241548 0 50%, #3b2868 0 75%, #241548 0);
+  background-size: 16px 16px;
+}
+#gallery .stage canvas { display: block; max-width: 100%; height: auto; image-rendering: pixelated; image-rendering: crisp-edges; }
+#gallery .label { font-size: 13px; line-height: 1.25; color: var(--text); overflow-wrap: anywhere; }
+#gallery .dims { font-size: 11px; color: var(--dim); font-variant-numeric: tabular-nums; }
+#gallery .mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  font-size: 11px; line-height: 1.35; color: var(--blue); overflow-wrap: anywhere; cursor: pointer;
+}
+#gallery .path { color: var(--sun); }
+#gallery .tick { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--dim); }
+#gallery .tick input[type="checkbox"] { accent-color: var(--good); width: 16px; height: 16px; margin: 0; }
+#gallery .card.is-custom .tick { color: var(--good); }
+
+#gallery-none { text-align: center; color: var(--dim); margin: 40px 0; font-family: var(--f-flavor); font-size: 18px; }
+#gallery .err {
+  margin: 16px 0; padding: 14px 16px; border-radius: 14px; border: 2px solid var(--bad);
+  background: rgba(93, 22, 40, .45); color: var(--text);
+}
+#gallery .foot { margin: 34px 0 0; text-align: center; font-family: var(--f-flavor); font-size: 17px; color: var(--blue); }
+
+#toast {
+  position: fixed; left: 50%; bottom: calc(16px + var(--safe-b)); z-index: 20;
+  transform: translate(-50%, 140%); transition: transform .2s ease;
+  padding: 10px 16px; border-radius: 12px; max-width: calc(100% - 32px);
+  font-family: var(--f-display); font-size: 14px; color: var(--white);
+  background: var(--panel-hi); border: 2px solid var(--blue); box-shadow: 0 6px 18px rgba(0, 0, 0, .5);
+}
+#toast.on { transform: translate(-50%, 0); }
+</style>
+</head>
+<body>
+<header id="gallery-head">
+  <h1 class="h">Circumference — Art Gallery</h1>
+  <p class="flavor">Draw it. Save the PNG at the path shown. Reload. That is the whole process.</p>
+  <div class="bar-row">
+    <span id="count" class="pill">custom 0 / 305</span>
+    <button id="btn-check" class="btn small" type="button">Check for my PNGs</button>
+    <button id="btn-copy" class="btn small ghost" type="button">Copy manifest entries</button>
+    <label class="scale">Preview <input id="scale" type="range" min="2" max="6" step="1" value="3" aria-label="Preview scale"> <output id="scale-out" for="scale">3x</output></label>
+  </div>
+  <div class="bar-row">
+    <input id="q" type="search" placeholder="Filter by id or name" autocomplete="off" aria-label="Filter cards by id or name">
+    <div id="chips" class="chips" role="group" aria-label="Categories"></div>
+  </div>
+</header>
+
+<main id="gallery">
+  <div id="gallery-err" class="err" hidden></div>
+  <div id="gallery-body"></div>
+  <p id="gallery-none" hidden>Nothing matches that. Try a shorter word, or switch a category back on.</p>
+  <p class="foot">Any resolution works: images are fitted to the box width. Draw at 8x for crisp results.</p>
+</main>
+
+<div id="toast" role="status" aria-live="polite" hidden></div>
+
+<script type="module">
+import * as A from './src/art/assets.js';
+import { on } from './src/core/bus.js';
+
+const { initAssets, allIds, assetInfo } = A;
+
+// ---- constants -------------------------------------------------------------------------------------------------
+const CATS = [['tile', 'Tiles'], ['prop', 'Props'], ['enemy', 'Enemies'], ['npc', 'NPCs'], ['hero', 'Hero'], ['item', 'Items']];
+const BIOMES = ['jungle', 'swamp', 'castle', 'mountain', 'desert', 'shark', 'rare'];
+const HERO_GROUPS = [['base', 'Base and swim'], ['head', 'Head armour'], ['body', 'Body armour'], ['arms', 'Arm armour'],
+                     ['legs', 'Leg armour'], ['weapons', 'Weapons'], ['other', 'Other']];
+const FALLBACK_BOX = { w: 32, h: 40, ax: 16, ay: 36 };
+const SCALE_DEFAULT = 3, PROBE_CONCURRENCY = 8, ANIM_MS = 260, CHUNK = 40;
+
+// ---- state -----------------------------------------------------------------------------------------------------
+let scale = SCALE_DEFAULT;
+let query = '';
+const catOn = Object.fromEntries(CATS.map(([c]) => [c, true]));
+const cards = new Map();        // id -> card
+const byEl = new Map();         // article element -> card
+const sections = [];            // { cat, el, cnt, total, groups: [{ el, grid, cnt, total, cards }] }
+const present = new Set();      // ids whose PNG was found by a check or by the asset bus
+const animated = new Set();     // visible liquid cards that need the 260 ms frame cycle
+let io = null;
+
+const $ = s => document.querySelector(s);
+const nameOf = id => id.slice(id.indexOf('/') + 1);
+
+/** Tiny DOM builder. Strings become text nodes, so nothing is ever parsed as HTML. */
+function el(tag, props = {}, kids = []) {
+  const n = document.createElement(tag);
+  for (const k of Object.keys(props)) {
+    const v = props[k];
+    if (v === null || v === undefined || v === false) continue;
+    if (k === 'class') n.className = v;
+    else if (k === 'disabled' || k === 'checked') n[k] = !!v;
+    else if (k.startsWith('on')) n.addEventListener(k.slice(2), v);
+    else n.setAttribute(k, v === true ? '' : String(v));
+  }
+  for (const c of kids) n.append(c);
+  return n;
+}
+
+function toast(msg) {
+  const t = $('#toast');
+  t.textContent = msg;
+  t.hidden = false;
+  t.classList.add('on');
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => t.classList.remove('on'), 2200);
+}
+
+async function copyText(text) {
+  try {
+    if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(text); return true; }
+  } catch (e) { /* fall through to the textarea route */ }
+  try {
+    const ta = el('textarea', { readonly: true, 'aria-hidden': true });
+    ta.value = text;
+    ta.style.cssText = 'position:fixed;opacity:0;left:-9999px;top:0';
+    document.body.append(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    ta.remove();
+    return ok;
+  } catch (e) { return false; }
+}
+
+function selectNode(node) {
+  const r = document.createRange();
+  r.selectNodeContents(node);
+  const s = window.getSelection();
+  s.removeAllRanges();
+  s.addRange(r);
+}
+
+async function pool(items, n, fn) {
+  let i = 0;
+  const workers = Array.from({ length: Math.min(n, items.length) }, async () => {
+    while (i < items.length) {
+      const item = items[i++];
+      try { await fn(item); } catch (e) { /* one bad file never stops the sweep */ }
+    }
+  });
+  await Promise.all(workers);
+}
+
+function loadImage(src) {
+  return new Promise(res => {
+    const im = new Image();
+    im.onload = () => res(im.naturalWidth ? im : null);
+    im.onerror = () => res(null);
+    im.src = src;
+  });
+}
+
+// ---- plan and DOM ----------------------------------------------------------------------------------------------
+function groupKey(cat, id) {
+  const name = nameOf(id);
+  if (cat === 'enemy') {
+    if (name.startsWith('rare-')) return 'rare';
+    if (name.startsWith('shark')) return 'shark';
+    return name.split('-')[0];
+  }
+  if (cat === 'hero') {
+    if (name === 'base' || name === 'swim') return 'base';
+    if (name.startsWith('wep-')) return 'weapons';
+    const slot = name.split('-')[0];
+    return ['head', 'body', 'arms', 'legs'].includes(slot) ? slot : 'other';
+  }
+  return 'all';
+}
+
+const groupOrder = cat => (cat === 'enemy' ? BIOMES : cat === 'hero' ? HERO_GROUPS.map(g => g[0]) : ['all']);
+const groupTitle = (cat, key) => {
+  if (cat === 'hero') return (HERO_GROUPS.find(g => g[0] === key) || [, key])[1];
+  if (cat === 'enemy') return key.charAt(0).toUpperCase() + key.slice(1);
+  return null;
+};
+
+function buildPlan() {
+  const ids = allIds();
+  return CATS.map(([cat, title]) => {
+    const list = ids.filter(id => id.startsWith(cat + '/'));
+    const map = new Map();
+    for (const id of list) {
+      const k = groupKey(cat, id);
+      if (!map.has(k)) map.set(k, []);
+      map.get(k).push(id);
+    }
+    const order = groupOrder(cat);
+    const rank = k => (order.indexOf(k) < 0 ? 999 : order.indexOf(k));
+    const keys = [...map.keys()].sort((a, b) => rank(a) - rank(b));
+    return { cat, title, count: list.length, groups: keys.map(k => ({ key: k, title: groupTitle(cat, k), ids: map.get(k) })) };
+  });
+}
+
+/** Builds every section and group heading now; the cards are appended later in chunks. */
+function buildSections(plan) {
+  const body = $('#gallery-body');
+  const pending = [];
+  for (const sec of plan) {
+    if (!sec.count) continue;
+    const cnt = el('span', { class: 'cnt' }, [String(sec.count)]);
+    const secEl = el('section', { class: 'cat', 'data-cat': sec.cat, 'aria-label': sec.title }, [
+      el('h2', { class: 'h' }, [sec.title, ' ', cnt]),
+    ]);
+    const rec = { cat: sec.cat, el: secEl, cnt, total: sec.count, groups: [] };
+    for (const g of sec.groups) {
+      const gcnt = el('span', { class: 'cnt' }, [String(g.ids.length)]);
+      const grid = el('div', { class: 'grid' });
+      const kids = g.title ? [el('h3', { class: 'flavor' }, [g.title, ' ', gcnt]), grid] : [grid];
+      const grp = el('div', { class: 'grp' }, kids);
+      secEl.append(grp);
+      const gr = { el: grp, grid, cnt: gcnt, total: g.ids.length, cards: [] };
+      rec.groups.push(gr);
+      for (const id of g.ids) pending.push({ id, gr });
+    }
+    body.append(secEl);
+    sections.push(rec);
+  }
+  return pending;
+}
+
+function setCustom(card, on) {
+  card.custom = on;
+  card.cb.checked = on;
+  card.tickText.textContent = on ? 'custom art' : 'not drawn yet';
+  card.el.classList.toggle('is-custom', on);
+}
+
+function makeCard(id, gr) {
+  const info = assetInfo(id) || {};
+  const cat = id.split('/')[0];
+  const box = info.box || FALLBACK_BOX;
+  const path = info.path || `assets/art/${cat}/${nameOf(id)}.png`;
+  const label = info.label || nameOf(id);
+
+  const canvas = el('canvas', { role: 'img', 'aria-label': label });
+  const stage = el('div', { class: 'stage' }, [canvas]);
+  const idEl = el('div', { class: 'mono id', title: 'Tap to select' }, [id]);
+  idEl.addEventListener('click', () => selectNode(idEl));
+  const pathEl = el('div', { class: 'mono path', role: 'button', tabindex: '0', title: 'Tap to copy the path' }, [path]);
+  const copyPath = async () => {
+    const ok = await copyText(path);
+    toast(ok ? 'Path copied' : 'Could not copy. Select the path by hand.');
+  };
+  pathEl.addEventListener('click', copyPath);
+  pathEl.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); copyPath(); } });
+  const cb = el('input', { type: 'checkbox', disabled: true, tabindex: '-1', 'aria-label': 'custom art present' });
+  const tickText = el('span', {}, ['not drawn yet']);
+  const tick = el('label', { class: 'tick' }, [cb, tickText]);
+  const node = el('article', { class: 'card', 'data-id': id, 'data-cat': cat }, [
+    stage, idEl, el('div', { class: 'label' }, [label]), el('div', { class: 'dims' }, [`${box.w} x ${box.h}`]), pathEl, tick,
+  ]);
+
+  const card = {
+    id, cat, label, box, path, el: node, canvas, cb, tickText,
+    hay: (id + ' ' + label).toLowerCase(), spr: null, override: null, frame: 0,
+    custom: false, painted: false, visible: !io, dirty: false,
+  };
+  byEl.set(node, card);
+  cards.set(id, card);
+  gr.grid.append(node);
+  gr.cards.push(card);
+  if (io) io.observe(node);
+  return card;
+}
+
+/** Appends cards 40 at a time, one chunk per animation frame, so the first paint stays fast. */
+function renderCards(pending) {
+  return new Promise((resolve, reject) => {
+    let i = 0;
+    const step = () => {
+      try {
+        const end = Math.min(i + CHUNK, pending.length);
+        for (; i < end; i++) makeCard(pending[i].id, pending[i].gr);
+        if (i < pending.length) requestAnimationFrame(step);
+        else resolve();
+      } catch (e) { reject(e); }
+    };
+    step();
+  });
+}
+
+// ---- painting --------------------------------------------------------------------------------------------------
+function drawOverlay(g, c, box, S) {
+  g.save();
+  g.lineWidth = 1;
+  g.setLineDash([3, 3]);
+  g.strokeStyle = 'rgba(143, 211, 255, .85)';
+  g.strokeRect(0.5, 0.5, box.w * S - 1, box.h * S - 1);
+  g.setLineDash([]);
+  const ax = Math.floor(box.ax * S) + 0.5, ay = Math.floor(box.ay * S) + 0.5, r = Math.max(3, S * 2);
+  g.strokeStyle = '#ff2fa0';
+  g.beginPath();
+  g.moveTo(ax - r, ay); g.lineTo(ax + r + 1, ay);
+  g.moveTo(ax, ay - r); g.lineTo(ax, ay + r + 1);
+  g.stroke();
+  g.restore();
+}
+
+function paint(card) {
+  const { box } = card;
+  const S = scale;
+  const c = card.canvas;
+  c.width = box.w * S;
+  c.height = box.h * S;
+  const g = c.getContext('2d');
+  g.imageSmoothingEnabled = false;
+  try {
+    if (card.override) {
+      const im = card.override;
+      const dw = box.w * S, dh = (im.naturalHeight / im.naturalWidth) * dw;
+      const dy = card.cat === 'tile' ? 0 : c.height - dh;
+      g.drawImage(im, 0, dy, dw, dh);
+    } else {
+      if (!card.spr) card.spr = A.sprite(card.id, 0);
+      const s = card.spr;
+      const frames = Math.max(1, (s.frames | 0) || 1);
+      const w = s.w || box.w, h = s.h || box.h;
+      g.drawImage(s.img, (card.frame % frames) * w, 0, w, h, 0, 0, w * S, h * S);
+    }
+  } catch (e) { /* image not decoded yet; the checkerboard and outline still show */ }
+  drawOverlay(g, c, box, S);
+  card.painted = true;
+  card.dirty = false;
+  const frames = card.spr ? (card.spr.frames | 0) || 1 : 1;
+  if (card.visible && card.cat === 'tile' && frames > 1) animated.add(card);
+  else animated.delete(card);
+}
+
+function onIntersect(entries) {
+  for (const e of entries) {
+    const card = byEl.get(e.target);
+    if (!card) continue;
+    card.visible = e.isIntersecting;
+    if (e.isIntersecting) { if (!card.painted || card.dirty) paint(card); }
+    else animated.delete(card);
+  }
+}
+
+function tickAnim() {
+  for (const card of animated) {
+    if (!card.visible || !card.spr) continue;
+    const frames = (card.spr.frames | 0) || 1;
+    card.frame = (card.frame + 1) % frames;
+    paint(card);
+  }
+}
+
+function setScale(v) {
+  scale = v;
+  $('#scale-out').textContent = v + 'x';
+  for (const card of cards.values()) {
+    if (card.visible && card.painted) paint(card);
+    else card.dirty = true;
+  }
+}
+
+// ---- filters, counts and ticks ---------------------------------------------------------------------------------
+function setCnt(node, shown, total) {
+  node.textContent = shown !== total || query ? `${shown} / ${total}` : String(total);
+}
+
+function applyFilter() {
+  const q = query.trim().toLowerCase();
+  let anyShown = false;
+  for (const sec of sections) {
+    let secShown = 0;
+    for (const gr of sec.groups) {
+      let shown = 0;
+      for (const card of gr.cards) {
+        const on = catOn[card.cat] && (!q || card.hay.includes(q));
+        card.el.hidden = !on;
+        if (on) shown++;
+      }
+      gr.el.hidden = shown === 0;
+      setCnt(gr.cnt, shown, gr.total);
+      secShown += shown;
+    }
+    sec.el.hidden = !catOn[sec.cat] || secShown === 0;
+    setCnt(sec.cnt, secShown, sec.total);
+    if (!sec.el.hidden) anyShown = true;
+  }
+  $('#gallery-none').hidden = anyShown;
+}
+
+function updateCounter() {
+  let n = 0;
+  for (const card of cards.values()) if (card.custom) n++;
+  $('#count').textContent = `custom ${n} / ${cards.size}`;
+}
+
+function refreshTicks() {
+  for (const card of cards.values()) {
+    const info = assetInfo(card.id);
+    const now = !!(info && info.custom) || present.has(card.id);
+    if (now !== card.custom && !card.override) { card.spr = null; card.frame = 0; card.dirty = true; if (card.visible) paint(card); }   // show the art the tick is about
+    setCustom(card, now);
+  }
+  updateCounter();
+}
+
+async function checkPNGs(btn) {
+  if (btn.disabled) return;
+  btn.disabled = true;
+  const label = btn.textContent;
+  btn.textContent = 'Checking...';
+  try {
+    const ids = allIds();
+    const found = new Set();
+    if (typeof A.probeAll === 'function') {
+      const set = await A.probeAll(ids);
+      for (const id of set) found.add(id);
+      // Files the sprite layer did not pick up get a direct image so the card still shows them.
+      await pool([...found].filter(id => !(assetInfo(id) || {}).custom), PROBE_CONCURRENCY, async id => {
+        const card = cards.get(id);
+        if (!card || card.override) return;
+        const im = await loadImage(card.path);
+        if (im) card.override = im;
+      });
+    } else {
+      await pool(ids, PROBE_CONCURRENCY, async id => {
+        const card = cards.get(id);
+        if (!card) return;
+        const im = await loadImage(card.path);
+        if (im) { found.add(id); card.override = im; }
+      });
+    }
+    for (const id of found) {
+      present.add(id);
+      const card = cards.get(id);
+      if (!card) continue;
+      card.spr = null;
+      card.frame = 0;
+      card.dirty = true;
+      if (card.visible) paint(card);
+    }
+    refreshTicks();
+    toast(`Found ${found.size} PNG${found.size === 1 ? '' : 's'}`);
+  } catch (e) {
+    toast('Check failed: ' + (e && e.message ? e.message : String(e)));
+  } finally {
+    btn.disabled = false;
+    btn.textContent = label;
+  }
+}
+
+async function copyManifest() {
+  const ids = allIds().filter(id => cards.get(id) && cards.get(id).custom);
+  if (!ids.length) { toast('No finished PNGs yet. Draw one, save it, reload.'); return; }
+  const text = typeof A.manifestEntries === 'function'
+    ? A.manifestEntries(ids)
+    : ids.map(id => `  '${id}': true,`).join('\n');
+  const ok = await copyText(text);
+  toast(ok ? `Copied ${ids.length} entries` : 'The clipboard said no. Try again from a tap.');
+}
+
+function onAsset(p) {
+  const id = p && p.id;
+  const card = id && cards.get(id);
+  if (!card) return;
+  present.add(id);
+  card.spr = null;
+  card.override = null;
+  card.frame = 0;
+  setCustom(card, true);
+  card.dirty = true;
+  if (card.visible) paint(card);
+  updateCounter();
+}
+
+// ---- controls --------------------------------------------------------------------------------------------------
+function wireControls() {
+  const q = $('#q');
+  let ft = 0;
+  q.addEventListener('input', () => {
+    clearTimeout(ft);
+    ft = setTimeout(() => { query = q.value; applyFilter(); }, 80);
+  });
+
+  const chips = $('#chips');
+  for (const [cat, title] of CATS) {
+    const chip = el('button', { class: 'chip', type: 'button', 'aria-pressed': 'true', 'data-cat': cat }, [title]);
+    chip.addEventListener('click', () => {
+      catOn[cat] = !catOn[cat];
+      chip.setAttribute('aria-pressed', String(catOn[cat]));
+      applyFilter();
+    });
+    chips.append(chip);
+  }
+
+  $('#btn-check').addEventListener('click', e => checkPNGs(e.currentTarget));
+  $('#btn-copy').addEventListener('click', () => copyManifest());
+
+  const slider = $('#scale');
+  slider.value = String(SCALE_DEFAULT);
+  $('#scale-out').textContent = SCALE_DEFAULT + 'x';
+  slider.addEventListener('input', () => setScale(Math.round(+slider.value) || SCALE_DEFAULT));
+}
+
+// ---- boot ------------------------------------------------------------------------------------------------------
+async function main() {
+  try {
+    await initAssets();
+    io = 'IntersectionObserver' in window
+      ? new IntersectionObserver(onIntersect, { rootMargin: '200px 0px' })
+      : null;
+    on('asset', onAsset);                 // before any card paints: a PNG can arrive while the cards are still being built
+    const pending = buildSections(buildPlan());
+    await renderCards(pending);
+    if (!io) for (const card of cards.values()) paint(card);
+    wireControls();
+    setInterval(tickAnim, ANIM_MS);
+    refreshTicks();
+    applyFilter();
+    document.body.dataset.ready = String(cards.size);
+    checkPNGs($('#btn-check'));           // look for every PNG once on load, so the ticks and the counter are true without a click
+  } catch (e) {
+    const box = $('#gallery-err');
+    box.hidden = false;
+    box.textContent = 'The gallery hit an error. ' + (e && e.message ? e.message : String(e));
+    console.error('[art]', e);
+  }
+}
+
+main();
+</script>
+</body>
+</html>
