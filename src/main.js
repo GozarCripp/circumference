@@ -21,6 +21,7 @@ import * as spells from './game/spells.js';
 import * as quests from './game/quests.js';
 import * as potions from './game/potions.js';
 import * as life from './game/life.js';
+import { initDirector } from './game/director.js';
 import * as save from './game/save.js';
 import * as input from './input/input.js';
 import * as hud from './ui/hud.js';
@@ -76,6 +77,7 @@ async function boot() {
   dungeon.initDungeons();
   potions.initPotions();
   life.initLife();
+  initDirector();
   save.initSave();                                     // autosave on 'turn', wipe on 'death', save on tab hide
   input.initInput($('world'));
 

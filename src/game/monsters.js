@@ -17,6 +17,7 @@ import { hurt, damageMon, theName } from './combat.js';
 import { gearItem, genGear, potionItem, goldItem, scrollItem } from './loot.js';
 import { spawnNPCs } from './quests.js';
 import { randomSpell } from './spells.js';
+import { tierShift, bossAllowed } from './director.js';
 
 const CHUNK = 16;
 const AI_RANGE = 24;        // monsters farther than this (Chebyshev) do nothing this turn
@@ -54,7 +55,8 @@ export function mkMon(x, y, d, ft) {
   let b = biome(x, y);
   if (!(b >= 0 && b < BEAST.length)) b = 0;
   let t = R(Math.min(23, 2 + Math.floor(d / 12)) + 1);
-  if (d > 150 && R(30) === 0) t = 24;
+  t = Math.max(0, Math.min(23, t + tierShift()));   // soft adaptive difficulty (game/director.js)
+  if (d > 150 && R(30) === 0 && bossAllowed()) t = 24;
   const forced = ft != null;
   if (forced) t = ft;
   t = Math.max(0, Math.min(24, t | 0));
