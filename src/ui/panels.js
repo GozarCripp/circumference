@@ -13,6 +13,8 @@ import * as life from '../game/life.js';
 import * as spells from '../game/spells.js';
 import * as save from '../game/save.js';
 import * as turn from '../game/turn.js';
+import * as verbs from '../game/verbs.js';
+import * as net from '../net/net.js';
 import * as sfx from '../audio/sfx.js';
 import * as renderer from '../render/renderer.js';
 import * as world from '../world/world.js';
@@ -119,6 +121,8 @@ export function initPanels() {
   injectCss();
   on('death', d => guard('death', () => showDeath(d && d.by, d && d.claim)));
   on('hail', d => guard('hail', () => openDialog(d && d.npc)));
+  // MULTIPLAYER client: the host answers a dialog choice with the next page
+  on('dialog', d => guard('dialog', () => { if (!verbs.isRemote() || !d) return; if (d.model) renderDialog(d.npc, d.model, true); else hidePanel(); }));
   on('newgame', () => { locked = false; if (domPanelOpen()) hidePanel(); });
 }
 
@@ -214,7 +218,7 @@ function journalBody() {
       kids.push(el('div', { class: 'pn-empty' }, 'Your spellbook is empty, like your calendar after the reorg. Scrolls turn up in loot. Reading them is, regrettably, up to you.'));
     }
     known.forEach(sp => {
-      const forget = button('Forget', () => { guard('forget', () => spells.forgetSpell(sp.id)); renderJournal(true); }, 'small danger');
+      const forget = button('Forget', () => { guard('forget', () => verbs.run('forget', sp.id)); renderJournal(true); }, 'small danger');
       kids.push(el('div', { class: 'pn-row' }, [
         el('div', { class: 's' }, [el('span', { class: 't' }, sp.name), el('span', { class: 'chip num' }, sp.cost + ' MP')]),
         el('div', { class: 'flavor', style: { fontSize: '1.05em' } }, sp.desc),
@@ -263,6 +267,7 @@ export function openMenu() {
     const classic = button('Play the original ASCII version', () => { guard('classic', () => { save.saveGame(); location.href = 'classic/index.html'; }); }, 'ghost');
     show(shell('Menu', [el('div', { class: 'pn-menu' }, [
       button('Resume', closePanels, 'primary'),
+      button(G.room ? `Room ${G.room}` : 'Play together', openRoom),
       soundBtn,
       dblBtn,
       el('div', { class: 'pn-pair' }, [button('−', z(-1)), zoomLbl, button('+', z(1))]),
@@ -272,6 +277,44 @@ export function openMenu() {
     ])]));
   });
 }
+// ---------------------------------------------------------------------------------------------------------------------
+// Play together (MULTIPLAYER rooms)
+// ---------------------------------------------------------------------------------------------------------------------
+function openRoom() {
+  guard('openRoom', () => {
+    const nameIn = el('input', { class: 'pn-input', value: net.getName(), maxlength: '16', placeholder: 'Your name' });
+    nameIn.addEventListener('change', () => net.setName(nameIn.value));
+    const nameRow = el('label', { class: 'pn-field' }, [el('span', {}, 'Name'), nameIn]);
+    if (!G.room) {
+      const codeIn = el('input', { class: 'pn-input', maxlength: '8', placeholder: 'ROOM CODE', style: { textTransform: 'uppercase' } });
+      show(shell('Play together', [
+        el('div', { class: 'pn-empty' }, `Up to ${net.MAX_PLAYERS} heroes on one planet. No accounts, no installs: share a link or a code. Monsters multiply with company.`),
+        nameRow,
+        button('Host a room', () => { net.setName(nameIn.value); hidePanel(); net.hostRoom().then(() => openRoom()); }, 'primary'),
+        el('label', { class: 'pn-field' }, [el('span', {}, 'Code'), codeIn]),
+        button('Join a room', () => { net.setName(nameIn.value); if (!codeIn.value.trim()) return; hidePanel(); net.joinRoom(codeIn.value); }),
+        button('Back', openMenu, 'ghost'),
+      ], { onClose: openMenu }));
+      return;
+    }
+    const link = net.shareLink();
+    const copy = button('Copy invite link', () => {
+      try { navigator.clipboard.writeText(link).then(() => { copy.textContent = 'Copied!'; }); } catch (e) { copy.textContent = link; }
+    }, 'primary');
+    const list = net.roomPlayers().map(p => el('div', { class: 'pn-empty', style: { padding: '2px 0' } },
+      `${p.me ? '▶ ' : ''}${p.name || 'Someone'}${p.over ? ' (dead)' : p.collapsed ? ' (collapsed)' : ''}`));
+    show(shell(`Room ${G.room}`, [
+      el('div', { class: 'h', style: { fontSize: '34px', textAlign: 'center', letterSpacing: '6px' } }, G.room),
+      el('div', { class: 'pn-empty' }, net.roomRole() === 'host' ? 'You are hosting: the planet runs in your browser. If you leave, someone else takes over.' : 'Connected. The host is keeping the planet spinning.'),
+      copy,
+      el('div', { class: 'pn-empty', style: { wordBreak: 'break-all', fontSize: '12px' } }, link),
+      ...list,
+      button('Leave room', () => { hidePanel(); net.leaveRoom(); }, 'danger'),
+      button('Back', openMenu, 'ghost'),
+    ], { onClose: openMenu }));
+  });
+}
+
 const zoomText = () => { const z = (G.opts && G.opts.zoom) || 0; return z > 0 ? '+' + z : String(z); };
 
 function openHowTo() {
@@ -295,7 +338,7 @@ function openGiveUp() {
     el('div', { class: 'btn-row' }, [
       button('Keep going', openMenu, 'primary'),
       button('Yes, give up', () => {
-        guard('giveUp', () => { save.wipeSave(); turn.newGame(); });
+        guard('giveUp', () => { if (G.room) emit('respawn', {}); else { save.wipeSave(); turn.newGame(); } });
         locked = false; hidePanel();
       }, 'danger'),
     ]),
@@ -322,7 +365,8 @@ function renderDialog(npc, model, keep) {
   const btns = actions.map(a => button(a.label, () => {
     guard('choose', () => {
       if (a.id === 'bye') { hidePanel(); return; }
-      const next = npc.amb ? life.choose(npc, a.id) : quests.choose(npc, a.id);
+      const next = verbs.run('choose', npc, a.id);
+      if (verbs.isRemote()) return;                                // the host answers with a 'dialog' event
       if (!next) { hidePanel(); return; }
       renderDialog(npc, next, true);
     });
@@ -358,7 +402,7 @@ export function showDeath(by, claim) {
     const verdict = claim && claim.text ? claim.text : UNINSURED;
     const born = button('Be born again', () => {
       locked = false; hidePanel();
-      guard('reborn', () => { save.wipeSave(); turn.newGame(); });
+      guard('reborn', () => { if (G.room) emit('respawn', {}); else { save.wipeSave(); turn.newGame(); } });
     }, 'primary');
     const node = el('div', { class: 'panel pn pn-death' }, [
       el('h2', {}, 'You died.'),

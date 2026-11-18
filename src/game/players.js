@@ -21,7 +21,7 @@ export function mpOf(P) {
     Object.defineProperty(P, 'mp', {
       enumerable: false, writable: true,
       value: {
-        id: '', name: '', local: false, joined: 0,
+        id: '', name: '', local: false, joined: 0, key: '', peer: '', collapsed: 0,
         dg: null, fi: 0, vis: new Uint8Array(WS * WS), zone: null, auto: null, over: false, log: [], outbox: [],
         acted: false, rested: false, queued: null, held: null, known: new Set(), zoneSaid: new Map(), twice: false,
       },
@@ -34,7 +34,7 @@ export function mpOf(P) {
 export function layerOf(P) { const m = mpOf(P); return m.dg ? m.dg.k + '#' + m.fi : 'ow'; }
 
 export const players = () => (G.players ? [...G.players.values()] : (G.P ? [G.P] : []));
-export const living = () => players().filter(p => !mpOf(p).over);
+export const living = () => players().filter(p => !mpOf(p).over && !mpOf(p).collapsed);
 export const local = () => (G.players && G.players.get(G.me)) || G.P;
 export const isLocal = P => P === local();
 
@@ -65,6 +65,59 @@ export function addPlayer({ id, name = 'Stranger', x, y } = {}) {
 }
 
 export function removePlayer(id) { if (G.players) G.players.delete(id); }
+
+export const byKey = key => players().find(p => mpOf(p).key === key);
+export const byPeer = peer => players().find(p => mpOf(p).peer === peer);
+
+/** Plain records of every hero (for the room snapshot). P.ow is reduced to its overworld position. */
+export function records() {
+  return players().map(P => {
+    const m = mpOf(P), p = {};
+    for (const k of Object.keys(P)) if (k !== 'ow' && k !== 'work') p[k] = P[k];
+    p.work = [...(P.work || new Map())];
+    return { id: m.id, name: m.name, key: m.key, joined: m.joined, over: m.over, collapsed: m.collapsed,
+      dk: m.dg ? m.dg.k : null, fi: m.fi, ow: P.ow ? { x: P.ow.x, y: P.ow.y } : null, P: p };
+  });
+}
+
+/** After save.restoreSnapshot(): rebuild every hero from records and make hero `myId` the local one.
+ *  The restored G.P (the old host's view) only serves to pin the shared overworld. */
+export function rebuild(recs, myId) {
+  const R0 = G.P;
+  G.world = G.dg && R0.ow
+    ? { mons: R0.ow.mons, items: R0.ow.items, npcs: R0.ow.npcs, seen: R0.ow.seen }
+    : { mons: G.mons, items: G.items, npcs: G.npcs, seen: G.seen };
+  G.players = new Map();
+  for (const r of recs) {
+    const P = newPlayer();
+    for (const k of Object.keys(r.P)) if (k !== 'work') P[k] = r.P[k];
+    P.work = new Map(r.P.work || []);
+    const m = mpOf(P);
+    const D = r.dk ? G.pyr.get(r.dk) : null;
+    Object.assign(m, { id: r.id, name: r.name, key: r.key, joined: r.joined, over: !!r.over, collapsed: r.collapsed || 0,
+      dg: D || null, fi: D ? r.fi | 0 : 0, local: r.id === myId, zone: null });
+    if (D && r.ow) P.ow = { x: r.ow.x, y: r.ow.y, mons: G.world.mons, items: G.world.items, npcs: G.world.npcs, seen: G.world.seen };
+    G.players.set(r.id, P);
+  }
+  G.me = myId;
+  cur = null;
+  const me = G.players.get(myId);
+  if (me) enter(me);
+  return me;
+}
+
+/** Make an existing hero the local one (e.g. after the host created it). */
+export function setLocal(id) {
+  const P = G.players && G.players.get(id);
+  if (!P) return null;
+  if (cur && cur !== P) leave(cur);
+  for (const h of players()) mpOf(h).local = h === P;
+  G.me = id; cur = null; enter(P);
+  return P;
+}
+
+/** Re-point G at the local hero's current layer (after the net layer changed its dungeon/floor or a layer's lists). */
+export function refresh() { const P = local(); if (P) { cur = null; enter(P); } }
 
 /** Point G at hero P's view. */
 function enter(P) {

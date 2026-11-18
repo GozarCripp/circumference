@@ -12,7 +12,13 @@ export function on(ev, fn) {
   s.add(fn); return () => s.delete(fn);
 }
 
+let mirror = false;   // MULTIPLAYER client: this device only mirrors the host's world, so simulation listeners stay quiet
 let sink = null;       // MULTIPLAYER: while set, emits are captured here instead of dispatched (see game/players.js)
+
+/** Subscribe a SIMULATION listener (game/ and world/ modules): it is skipped while this device is a mirror. */
+export function onSim(ev, fn) { return on(ev, p => { if (!mirror) fn(p); }); }
+export function setMirror(v) { mirror = !!v; }
+export const isMirror = () => mirror;
 
 /** Redirect every emit to fn(ev, payload) until capture(null). Returns the previous sink (so captures can nest). */
 export function capture(fn) { const prev = sink; sink = fn || null; return prev; }

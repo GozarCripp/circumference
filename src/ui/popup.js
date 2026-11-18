@@ -21,6 +21,7 @@ import { SPELLS, spellTargets, castBlock, castSpell } from '../game/spells.js';
 import { NPCS } from '../game/quests.js';
 import { gearDesc, defense, pickup, potName, potColor, isKnown, POTION_INFO } from '../game/loot.js';
 import { belt, drink, canThrowPoison, throwBlock, throwPoison, potCount } from '../game/potions.js';
+import { run, isRemote } from '../game/verbs.js';
 import { openGear } from './gear.js';
 import { iconURL, itemSpriteId, heroSprite, sprite } from '../art/assets.js';
 import { tileToClient } from '../render/renderer.js';
@@ -246,23 +247,22 @@ function build() {
     body.push(div('pp-line flavor', `Standing on ${t.name}, as one does.`));
     if (R.it) body.push(itemBlock(R.it));
 
-    btns.push(button('Wait', () => { closePop(); endTurn(true); }));
+    btns.push(button('Wait', () => { closePop(); run('wait'); }));
     btns.push(button('Gear', () => { closePop(); openGear(); }));
-    if (hasCamp()) btns.push(button('Rest at camp', () => { closePop(); startAuto({ kind: 'rest' }); }, 'primary'));
+    if (hasCamp()) btns.push(button('Rest at camp', () => { closePop(); run('auto', { kind: 'rest' }); }, 'primary'));
     else {
-      btns.push(button('Rest', () => { closePop(); startAuto({ kind: 'rest' }); }, 'primary'));
-      if (!G.dg) btns.push(button('Make camp', () => { closePop(); makeCamp(); }));
+      btns.push(button('Rest', () => { closePop(); run('auto', { kind: 'rest' }); }, 'primary'));
+      if (!G.dg) btns.push(button('Make camp', () => { closePop(); run('camp'); }));
     }
     if (R.it) btns.push(button('Pick up', () => {
-      const k = WK(x, y), before = G.items.get(k);
-      pickup();
-      if (G.items.get(k) !== before || !G.items.has(k)) { closePop(); endTurn(); } else refresh();   // bag full / scroll refused: no turn spent
+      const took = run('pickup');                                  // undefined on a client: the host decides
+      if (took !== false) closePop(); else refresh();               // bag full / scroll refused: no turn spent
     }, 'primary wide', { main: true }));
     // the potion belt: one Drink button per kind carried (never a main action: drinking is always a deliberate tap)
     for (const b of belt()) {
       const btn = button(`Drink ${b.name} (${b.n})`, () => {
         closePop();
-        if (drink(b.pot) && !G.over) endTurn();
+        run('drink', b.pot);
       }, 'wide', { title: b.desc });
       btn.style.borderColor = b.col;
       btn.style.boxShadow = `inset 4px 0 0 ${b.col}`;
@@ -285,16 +285,16 @@ function build() {
     const near = inRange(m);
     btns.push(button(near ? 'Attack' : 'Charge!', () => {
       if (inRange(m)) {
-        attack(m); endTurn();
-        if (G.over || !G.mons.includes(m) || !monShown(m)) closePop(); else refresh();
-      } else { closePop(); startAuto({ kind: 'go', mon: m }); }
+        run('attack', m);
+        if (isRemote() || G.over || !G.mons.includes(m) || !monShown(m)) closePop(); else refresh();
+      } else { closePop(); run('attack', m); }
     }, 'primary wide', { main: true, danger: risky(m) }));
 
     if (canThrowPoison()) {
       const why = throwBlock(m);
       const tb = button(`Throw poison (${potCount('poison')})`, () => {
-        if (throwPoison(m)) endTurn();
-        if (G.over || !G.mons.includes(m) || !monShown(m)) closePop(); else refresh();
+        run('throw', m);
+        if (isRemote() || G.over || !G.mons.includes(m) || !monShown(m)) closePop(); else refresh();
       }, 'wide', { disabled: !!why, title: why });
       tb.style.borderColor = potColor('poison');
       btns.push(tb);
@@ -309,8 +309,8 @@ function build() {
       if (!ok) continue;
       const why = castBlock(id, m);
       btns.push(button(`${sp.name} · ${sp.cost} MP`, () => {
-        if (castSpell(id, m)) endTurn();
-        if (G.over) closePop(); else refresh();
+        run('cast', id, m);
+        if (isRemote() || G.over) closePop(); else refresh();
       }, 'wide', { disabled: !!why, title: why }));
       if (why) btns.push(el('div', { class: 'pp-why' }, why));
     }
@@ -327,7 +327,7 @@ function build() {
     const adjacent = Math.abs(n.x - P.x) <= 1 && Math.abs(n.y - P.y) <= 1;
     btns.push(button('Hail', () => {
       closePop();
-      if (adjacent) emit('hail', { npc: n }); else startAuto({ kind: 'npc', npc: n });
+      if (adjacent) emit('hail', { npc: n }); else run('auto', { kind: 'npc', npc: n });
     }, 'primary wide', { main: true }));
   }
 
@@ -348,7 +348,7 @@ function build() {
     const wi = known && t.blocks ? workInfo(x, y) : null;
     if (wi) {
       const left = Math.max(1, wi.n - (P.work.get(WK(x, y)) || 0));
-      btns.push(button(`${wi.verb} (${left} turn${plural(left)})`, () => { closePop(); startAuto({ kind: 'work', x, y }); }, 'primary wide', { main: true }));
+      btns.push(button(`${wi.verb} (${left} turn${plural(left)})`, () => { closePop(); run('auto', { kind: 'work', x, y }); }, 'primary wide', { main: true }));
     } else if (known && t.blocks) {
       body.push(div('pp-note dim', `You can't walk there. You checked. ${workHint(t)}`.trim()));
     }
@@ -358,7 +358,7 @@ function build() {
     if (fnote && k !== 'dlock') body.push(div('pp-note', fnote, { color: k === 'chest' || k === 'dkey' ? '#ffe066' : '#ffb866' }));
     if (known && t.deep) body.push(div('pp-note', 'Deep. You can swim it. Things live in it.', { color: '#aab4ff' }));
 
-    if (!wi && canGo(x, y)) btns.push(button(R.it ? 'Go grab it' : t.deep ? 'Swim here' : 'Walk here', () => { closePop(); startAuto({ kind: 'go', x, y }); }, 'primary wide', { main: true, danger: !!t.deep || k === 'pdoor' || !!t.dd }));
+    if (!wi && canGo(x, y)) btns.push(button(R.it ? 'Go grab it' : t.deep ? 'Swim here' : 'Walk here', () => { closePop(); run('auto', { kind: 'go', x, y }); }, 'primary wide', { main: true, danger: !!t.deep || k === 'pdoor' || !!t.dd }));
   }
 
   const head = el('div', { class: 'pp-head' });

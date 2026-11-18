@@ -7,7 +7,7 @@
 // Per-run state: G.run.life = { n (id counter), bark (turn of last bark), met: { kind: count } }.
 // Other builders' exports (potions.givePotion, dungeon.nearestSite, ...) land in parallel: every call is guarded.
 import { G, say } from '../core/state.js';
-import { on, emit } from '../core/bus.js';
+import { onSim as on, emit } from '../core/bus.js';
 import { WS, POTION_KINDS } from '../core/config.js';
 import { R, pick, mod, WK, WI } from '../core/util.js';
 import { h2, blocks, isDeep, terr, terrKey, free, isVis, tdist } from '../world/world.js';

@@ -7,7 +7,7 @@
 // current floor and are written into that floor. P.ow itself is never saved raw. While inside a pyramid, `ow`
 // also carries `x`,`y` (the hero's overworld position) so that leaving after a reload puts them back at the door.
 import { G, resetState } from '../core/state.js';
-import { on, emit } from '../core/bus.js';
+import { onSim as on, emit } from '../core/bus.js';
 import { SAVE_KEY, VERSION, WS } from '../core/config.js';
 import { rleBits, unrleBits } from '../core/util.js';
 import * as world from '../world/world.js';
@@ -137,6 +137,7 @@ export function initSave() {
 /** Serialise G to localStorage. Returns true on success. Never throws. */
 export function saveGame() {
   try {
+    if (G.room) return false;                           // MULTIPLAYER: the room's world is not this device's solo life
     if (!G.P || G.over || !G.seen || !G.pyr || !storageOk()) return false;
     if (G.dg && !G.P.ow) return false;                  // mid-swap: refuse rather than write half a life
     let json;
@@ -156,7 +157,24 @@ export function loadGame() {
   try { raw = storageOk() ? localStorage.getItem(SAVE_KEY) : null; } catch (e) { return false; }
   if (!raw) return false;
   try {
-    const d = JSON.parse(raw);
+    restoreSnapshot(JSON.parse(raw));
+    return true;
+  } catch (e) {
+    wipeSave();
+    return false;
+  }
+}
+
+/** MULTIPLAYER: the whole world as plain JSON (host -> joiners, and every client's copy for host handover). */
+export function worldSnapshot() { return snapshot(false); }
+/** MULTIPLAYER: one dungeon, every floor, for a client entering it. */
+export function packDungeon(D) { return packPyr(D, false, true); }
+/** MULTIPLAYER: rebuild one packed dungeon (the inverse of packDungeon). */
+export function unpackDungeon(pd) { return unpackPyr(pd); }
+
+/** Rebuild G from a snapshot object (save slot or host). Throws on anything malformed. Emits 'loaded'. */
+export function restoreSnapshot(d) {
+  {
     need(d && typeof d === 'object' && d.v === SAVE_V, 'version');
     need(isNum(d.seed) && isNum(d.turn) && d.home && isNum(d.home.x) && isNum(d.home.y), 'header');
     const sp = d.P;
@@ -173,38 +191,7 @@ export function loadGame() {
     G.quests = d.quests; G.log = d.log.slice(0, LOG_KEEP);
     G.run = d.run && typeof d.run === 'object' ? d.run : {};
 
-    // pyramids
-    for (const pd of d.pyr) {
-      need(pd && typeof pd.k === 'string' && isNum(pd.n) && isNum(pd.d) && isArr(pd.floors), 'pyramid');
-      const D = { k: pd.k, n: pd.n, d: pd.d, i: pd.i | 0, floors: [],
-        type: typeof pd.type === 'string' ? pd.type : 'pyramid', b: isNum(pd.b) ? pd.b : 4, dir: pd.dir === -1 ? -1 : 1,
-        tw: pd.tw && typeof pd.tw === 'object' ? pd.tw : {} };
-      if (pd.cl) D.cl = 1;
-      for (let i = 0; i < pd.floors.length; i++) {
-        const f = pd.floors[i];
-        if (!f) { D.floors.push(undefined); continue; }
-        need(isNum(f.s) && f.s > 0 && isArr(f.down) && isArr(f.up) && isArr(f.mons), 'floor');
-        const seen = unrleBits(f.seen, f.s * f.s);
-        need(seen.length === f.s * f.s, 'floor seen size');
-        let map;
-        if (isArr(f.pal)) {                               // v0.3 palette-packed map
-          need(isArr(f.map) && f.map.length === f.s, 'floor rows');
-          map = f.map.map(r => {
-            need(typeof r === 'string' && r.length === f.s, 'floor row width');
-            const out = new Array(f.s);
-            for (let x = 0; x < f.s; x++) { const k = f.pal[r.charCodeAt(x) - 48]; out[x] = typeof k === 'string' ? k : 'void'; }
-            return out;
-          });
-        } else map = unpackMap(f.map, f.s);
-        const fl = { s: f.s, map, down: f.down, up: f.up, mons: f.mons, items: pairsToMap(f.items), seen };
-        if (f.looted) fl.looted = 1;
-        if (f.keyed) fl.keyed = 1;
-        if (isNum(f.cap)) fl.cap = f.cap;
-        if (f.sw) fl.sw = 1;
-        D.floors.push(fl);
-      }
-      G.pyr.set(D.k, D);
-    }
+    for (const pd of d.pyr) { const D = unpackPyr(pd); G.pyr.set(D.k, D); }
 
     // overworld lists (live when outside; stashed in P.ow when inside)
     const owSeen = unrleBits(d.ow.seen, WS * WS), owItems = pairsToMap(d.ow.items);
@@ -232,11 +219,40 @@ export function loadGame() {
     G.zone = world.zoneAt(P.x, P.y).id;
     sinceTurns = 0; lastAt = Date.now();
     emit('loaded', {});
-    return true;
-  } catch (e) {
-    wipeSave();
-    return false;
   }
+}
+
+function unpackPyr(pd) {
+  need(pd && typeof pd.k === 'string' && isNum(pd.n) && isNum(pd.d) && isArr(pd.floors), 'pyramid');
+  const D = { k: pd.k, n: pd.n, d: pd.d, i: pd.i | 0, floors: [],
+    type: typeof pd.type === 'string' ? pd.type : 'pyramid', b: isNum(pd.b) ? pd.b : 4, dir: pd.dir === -1 ? -1 : 1,
+    tw: pd.tw && typeof pd.tw === 'object' ? pd.tw : {} };
+  if (pd.cl) D.cl = 1;
+  for (let i = 0; i < pd.floors.length; i++) {
+    const f = pd.floors[i];
+    if (!f) { D.floors.push(undefined); continue; }
+    need(isNum(f.s) && f.s > 0 && isArr(f.down) && isArr(f.up) && isArr(f.mons), 'floor');
+    const seen = unrleBits(f.seen, f.s * f.s);
+    need(seen.length === f.s * f.s, 'floor seen size');
+    let map;
+    if (isArr(f.pal)) {                               // v0.3 palette-packed map
+      need(isArr(f.map) && f.map.length === f.s, 'floor rows');
+      map = f.map.map(r => {
+        need(typeof r === 'string' && r.length === f.s, 'floor row width');
+        const out = new Array(f.s);
+        for (let x = 0; x < f.s; x++) { const k = f.pal[r.charCodeAt(x) - 48]; out[x] = typeof k === 'string' ? k : 'void'; }
+        return out;
+      });
+    } else map = unpackMap(f.map, f.s);
+    const fl = { s: f.s, map, down: f.down, up: f.up, mons: f.mons, items: pairsToMap(f.items), seen };
+    if (f.looted) fl.looted = 1;
+    if (f.keyed) fl.keyed = 1;
+    if (isNum(f.cap)) fl.cap = f.cap;
+    if (f.sw) fl.sw = 1;
+    D.floors.push(fl);
+  }
+  return D;
+
 }
 
 export function hasSave() { try { return !!localStorage.getItem(SAVE_KEY); } catch (e) { return false; } }

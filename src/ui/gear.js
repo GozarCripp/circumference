@@ -9,6 +9,7 @@ import * as assets from '../art/assets.js';
 import { el, css, tap, showPanel, hidePanel } from './dom.js';
 import { belt, drink } from '../game/potions.js';
 import { endTurn } from '../game/turn.js';
+import * as verbs from '../game/verbs.js';
 
 let inited = false;
 let open = false;     // true while our panel is the one showing
@@ -108,8 +109,8 @@ function bagRow(g, i) {
   return itemRow({
     g, hint,
     actions: [
-      actBtn('Equip', 'primary', () => { equip(i); openGear({ top: true }); }),
-      actBtn('Drop', 'danger', () => { dropGear(i); openGear(); }),
+      actBtn('Equip', 'primary', () => { verbs.run('equip', i); openGear({ top: true }); }),
+      actBtn('Drop', 'danger', () => { verbs.run('drop', i); openGear(); }),
     ],
   });
 }
@@ -125,7 +126,7 @@ function potRow(b) {
     el('div', { class: 'gear-desc' }, b.desc),
     el('div', { class: 'gear-acts' }, [actBtn('Drink', b.pot === 'nuke' || b.pot === 'poison' ? 'danger' : 'primary', () => {
       closeGear();
-      if (drink(b.pot) && !G.over) endTurn();
+      verbs.run('drink', b.pot);
     })]),
   ]);
   return el('div', { class: 'gear-row' }, [ico, txt, el('div', { class: 'gear-pot' }, '×' + b.n)]);

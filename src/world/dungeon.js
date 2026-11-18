@@ -21,7 +21,7 @@
 // The per-turn twist work is one listener on 'turn' that does nothing outside a dungeon and O(1) inside one
 // (the swarm spawn tries a few random tiles once every 8 turns). Listeners are wired at import (bus only; no G access).
 import { G, say } from '../core/state.js';
-import { emit, on } from '../core/bus.js';
+import { emit, onSim as on } from '../core/bus.js';
 import { WS, BAG } from '../core/config.js';
 import { R, pick, WK, wx } from '../core/util.js';
 import { h2, dist0, calcVis, blocks, isDeep, isVis, free, monAt, terrKey, siteAtDoor, siteInfo, SITE, dgType } from './world.js';

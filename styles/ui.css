@@ -101,3 +101,8 @@ hr.sep { border: 0; border-top: 1px solid rgba(255, 47, 160, .45); margin: 8px 0
   .btn { font-size: 16px; }
 }
 @media (prefers-reduced-motion: reduce) { #title { transition: none; } #tap { animation: none; } .bar > i { transition: none; } }
+
+/* MULTIPLAYER: room panel fields */
+.pn-field { display: flex; align-items: center; gap: 10px; margin: 6px 0; }
+.pn-field > span { min-width: 48px; color: var(--blue); }
+.pn-input { flex: 1; min-width: 0; font: inherit; font-size: 16px; padding: 8px 10px; border-radius: 8px; border: 2px solid #4a3a6a; background: #140d22; color: var(--white); }

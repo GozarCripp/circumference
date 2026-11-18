@@ -10,7 +10,7 @@
 // (same convention as spells.castSpell). Nothing here imports ui/, render/ or audio/: it all goes out on the bus:
 //   'potion' { pot, by: 'drink'|'throw', first, from?, to? }   'nuke' { x, y, r, kills }   'teleport' { from, to }
 import { G, say } from '../core/state.js';
-import { on, emit } from '../core/bus.js';
+import { onSim as on, emit } from '../core/bus.js';
 import { POTION_KINDS, NUKE_R, NUKE_SELF_DMG, WS } from '../core/config.js';
 import { R, WK, wx, mod } from '../core/util.js';
 import { SPECIAL_STEP } from '../data/terrain.js';

@@ -10,7 +10,7 @@
 //   G.quests.npcs[npcId] = 'new' | 'active' | 'done'   G.quests.cells = placement memo   G.quests.met = { npcId: {x,y} }
 // Ambient folk (npc.amb, World Life) are never touched here.
 import { G, say } from '../core/state.js';
-import { emit, on } from '../core/bus.js';
+import { emit, onSim as on } from '../core/bus.js';
 import { WS, ZONE, BAG, BIOMES, NPCS_PER_RUN } from '../core/config.js';
 import { R, pick, mod, WK, hash2 } from '../core/util.js';
 import { blocks, isDeep, terr, free, calcVis, biome } from '../world/world.js';

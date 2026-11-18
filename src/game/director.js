@@ -3,7 +3,7 @@
 // tier by round(pace), so a hero cruising through gets a tougher world and a struggling one gets breathing room.
 // Distance from home still sets the baseline; this only nudges it. Bosses are held back while the hero is struggling.
 import { G } from '../core/state.js';
-import { on } from '../core/bus.js';
+import { onSim as on } from '../core/bus.js';
 
 const MIN = -2, MAX = 3;
 const clamp = (v) => Math.max(MIN, Math.min(MAX, v));

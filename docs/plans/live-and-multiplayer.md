@@ -36,7 +36,20 @@ Built as a context switch rather than a rewrite. `game/players.js` keeps every h
 - **Dungeons are instanced.** `G.dg` becomes `G.dungeons[id]`, and each player points to the one they're in, so players can be anywhere.
 - **Simulation follows the players.** It runs within an activity radius of every living player, and `spawnAround` runs per player.
 
-### Networking (`src/net/`)
+### Networking (`src/net/`) — **status: built (chunk 2)**
+- **`transport.js`** has two transports with the same interface. **rtc** (the default) is Trystero 0.27, bundled into `net/vendor/` so there's no CDN dependency, running over public Nostr relays. **local** (`?net=local`) uses a BroadcastChannel between tabs, for development and tests.
+- **`net.js`** handles:
+  - **Joining and hosting.** Join by code or `?room=` link. If nobody answers within 6 seconds, the joiner hosts.
+  - **Updates.** The host sends each client a per-tick view (that hero, nearby monsters, NPCs and items, other heroes, and the hero's own events), plus dungeon packs when the hero changes floor, terrain changes, and a full snapshot every 5 seconds.
+  - **Handover.** The next player in join order rebuilds the world from the last snapshot, behind the "hang in there!" screen (`ui/hang.js`). Up to 5 seconds of play can roll back.
+  - **Dropouts.** A dropped player's hero collapses in place, untouchable, for 5 minutes. The same browser rejoining picks it back up, using a per-room key in local storage. A second tab of the same browser is given a new key and gets its own hero.
+  - **Death** leads to "Be born again", which creates a fresh, naked, newest hero.
+- **`codec.js`** sends monsters and NPCs as network IDs, and makes event payloads safe to send.
+- **`game/verbs.js`** routes every player action through one table, so UI and input go through `verbs.run()`. On a client the call is sent to the host.
+- **`bus.onSim` and `setMirror`** keep game-logic listeners quiet on clients, so quests, saves and the director only run on the host.
+- **No pausing in a room.** In a room the clock never holds or pauses, and solo saves are off.
+- **UI:** Menu → Play together (host, join, copy link, player list, leave). Other heroes show name tags, and collapsed heroes are drawn faded.
+
 - **`room.js`** sets up WebRTC with Trystero, using free public signaling. Each room has a 5-letter code. Opening `.../2.5d/?room=ABCDE` joins straight away. No install or account is needed.
 - **`host.js`** runs the authoritative simulation. It receives what players want to do and sends back changes plus bus events.
 - **`client.js`** sends the local player's actions, applies the host's updates and smooths movement on screen.

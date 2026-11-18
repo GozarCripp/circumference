@@ -16,6 +16,7 @@ import { KEY_DIRS } from '../render/iso.js';
 import * as renderer from '../render/renderer.js';
 import * as turn from '../game/turn.js';
 import * as spells from '../game/spells.js';
+import * as verbs from '../game/verbs.js';
 import * as popup from '../ui/popup.js';
 import * as dom from '../ui/dom.js';
 import * as title from '../ui/title.js';
@@ -147,14 +148,14 @@ export function initInput(canvas) {
   function handleTap(cx, cy) {
     if (inputBlocked()) return;
     if (clock.isPaused()) { clock.setPaused(false); emit('pause', { paused: false }); }
-    turn.stopAuto();
+    verbs.run('stop');
     const tile = renderer.pickTile(cx, cy);
     if (!tile) return;
     const t = now();
     const dbl = !!lastTap && lastTap.x === tile.x && lastTap.y === tile.y && t - lastTap.t < TIMING.dblTap;
     if (dbl) {
       lastTap = null;
-      if (turn.canAutoWalk(tile.x, tile.y)) { popup.closePop(); turn.startAuto({ kind: 'go', x: tile.x, y: tile.y }); return; }
+      if (turn.canAutoWalk(tile.x, tile.y)) { popup.closePop(); verbs.run('auto', { kind: 'go', x: tile.x, y: tile.y }); return; }
       if (popup.popOpen()) { popup.confirmPrimary(); return; }       // first tap's popup stays unless its main action ran
     } else {
       lastTap = { x: tile.x, y: tile.y, t };
@@ -184,7 +185,7 @@ export function initInput(canvas) {
     const target = spells.spellTargets(id)[0];                      // undefined for self spells
     const why = spells.castBlock(id, target);
     if (why) { say(why, 'sys'); return; }
-    if (spells.castSpell(id, target)) turn.endTurn();
+    verbs.run('cast', id, target);
   };
 
   document.addEventListener('keydown', guard('keydown', e => {
@@ -207,7 +208,7 @@ export function initInput(canvas) {
     if (key === '-' || key === '_') { e.preventDefault(); zoom(-1); return; }
 
     // pause (solo): P toggles; any verb key also resumes after an automatic (tab-hidden) pause
-    if (key === 'p') { e.preventDefault(); const p = clock.togglePause(); say(p ? 'Paused. The planet holds its breath, briefly, as a favour.' : 'The planet exhales. Things resume wanting to eat you.', 'sys'); emit('pause', { paused: p }); return; }
+    if (key === 'p' && !G.room) { e.preventDefault(); const p = clock.togglePause(); say(p ? 'Paused. The planet holds its breath, briefly, as a favour.' : 'The planet exhales. Things resume wanting to eat you.', 'sys'); emit('pause', { paused: p }); return; }
 
     const dir = KEY_DIRS[key] || KEY_DIRS[e.key];
     const gem = /^[1-4]$/.test(key) ? +key : 0;
@@ -220,11 +221,10 @@ export function initInput(canvas) {
     lastKey = t;
 
     if (clock.isPaused()) { clock.setPaused(false); emit('pause', { paused: false }); }
-    turn.stopAuto();
     if (dir) {
       popup.closePop();
-      turn.setHeld(dir);                                           // LIVE: holding the key keeps walking, one step per tick
-      turn.act(dir[0], dir[1]);
+      verbs.run('held', dir);                                      // LIVE: holding the key keeps walking, one step per tick
+      verbs.run('act', dir[0], dir[1]);
     } else if (gem) {
       popup.closePop();
       castGem(gem);
@@ -234,8 +234,8 @@ export function initInput(canvas) {
         case 'j': panels.openJournal(); break;
         case 'b': panels.openBestiary(); break;
         case 'm': panels.openMenu(); break;
-        case 'r': popup.closePop(); turn.startAuto({ kind: 'rest' }); break;
-        case 'k': popup.closePop(); turn.makeCamp(); break;
+        case 'r': popup.closePop(); verbs.run('auto', { kind: 'rest' }); break;
+        case 'k': popup.closePop(); verbs.run('camp'); break;
         default: break;
       }
     }
@@ -244,9 +244,9 @@ export function initInput(canvas) {
   // LIVE: releasing a direction key drops any step queued for the next tick (no overshoot)
   document.addEventListener('keyup', guard('keyup', e => {
     const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
-    if (KEY_DIRS[key] || KEY_DIRS[e.key]) turn.setHeld(null);
+    if (KEY_DIRS[key] || KEY_DIRS[e.key]) verbs.run('held', null);
   }));
 
   // losing focus mid-gesture must not leave a stale pointer (or a held key) behind
-  window.addEventListener('blur', guard('blur', () => { resetGesture(); turn.setHeld(null); }));
+  window.addEventListener('blur', guard('blur', () => { resetGesture(); verbs.run('held', null); }));
 }

@@ -23,6 +23,7 @@ import * as quests from './game/quests.js';
 import * as potions from './game/potions.js';
 import * as life from './game/life.js';
 import * as players from './game/players.js';
+import * as net from './net/net.js';
 import { initDirector } from './game/director.js';
 import * as save from './game/save.js';
 import * as input from './input/input.js';
@@ -94,9 +95,11 @@ async function boot() {
 
   // LIVE: the world turns on its own. It holds while the title or a modal panel (gear, journal, menu) is up,
   // and pauses when the tab is hidden (solo only; multiplayer will never pause).
-  clock.startClock(turn.worldTick, TIMING.tick, () => titleVisible() || panelOpen());
+  // In a MULTIPLAYER room nothing holds or pauses the world; net.tick runs it on the host and mirrors it on clients.
+  clock.startClock(net.tick, TIMING.tick, () => !G.room && (titleVisible() || panelOpen()));
+  net.initNet();
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden' && !clock.isPaused()) { clock.setPaused(true); emit('pause', { paused: true, auto: true }); }
+    if (document.visibilityState === 'hidden' && !G.room && !clock.isPaused()) { clock.setPaused(true); emit('pause', { paused: true, auto: true }); }
   });
 
   await showTitle({ resume: resumed });                // the game is already live underneath, as in classic
@@ -105,6 +108,6 @@ async function boot() {
 }
 
 // Debug / QA handle (Playwright tests and curious players): window.circ.G, window.circ.turn.step(1,0) …
-window.circ = { VERSION, G, util, on, emit, clock, players, world, dungeon, assets, renderer, lighting, fx, turn, combat, monsters, loot, spells, quests, save, input, hud, popup, gear, panels, sfx, requestRender };
+window.circ = { VERSION, G, util, on, emit, clock, players, net, world, dungeon, assets, renderer, lighting, fx, turn, combat, monsters, loot, spells, quests, save, input, hud, popup, gear, panels, sfx, requestRender };
 
 boot().catch(e => { console.error(e); toast('Boot failed: ' + (e.stack || e)); });

@@ -14,6 +14,7 @@ import * as world from '../world/world.js';
 import * as turn from '../game/turn.js';
 import * as spells from '../game/spells.js';
 import * as loot from '../game/loot.js';
+import * as verbs from '../game/verbs.js';
 import { openGear } from './gear.js';
 import { openJournal, openMenu, openBestiary } from './panels.js';
 import { $, el, css, tap } from './dom.js';
@@ -261,7 +262,7 @@ function campNear() {
 
 function campAction() {
   if (!G.P || G.over) return;
-  if (campNear()) turn.startAuto({ kind: 'rest' }); else turn.makeCamp();
+  if (campNear()) verbs.run('auto', { kind: 'rest' }); else verbs.run('camp');
 }
 
 /** Tap a spell gem: self spells fire at once, enemy spells at the nearest valid target. */
@@ -272,7 +273,7 @@ function castGem(id) {
   if (sp.target === 'enemy') target = (spells.spellTargets(id) || [])[0];
   const why = spells.castBlock(id, target);
   if (why) { say(why, 'sys'); return; }
-  if (spells.castSpell(id, target)) turn.endTurn();
+  verbs.run('cast', id, target);
 }
 
 // =====================================================================================================================
