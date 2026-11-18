@@ -13,7 +13,7 @@ import { rleBits, unrleBits } from '../core/util.js';
 import * as world from '../world/world.js';
 
 const SAVE_V = 1;
-const EVERY_TURNS = 10;      // throttle: save after this many turns ...
+const EVERY_TURNS = 40;      // throttle: save after this many turns ...
 const EVERY_MS = 5000;       // ... or this many ms, whichever comes first
 const LOG_KEEP = 30;
 const IMMEDIATE = ['floor', 'zone', 'levelup', 'equip', 'quest', 'chest', 'claim'];   // events that save at once

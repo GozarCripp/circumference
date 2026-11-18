@@ -1,9 +1,12 @@
-// game/turn.js — the player's verbs and the turn pipeline: newGame, step, act, endTurn (the one pipeline every
-// verb funnels into), auto-actions (go / charge / work / rest / walk-to-NPC on a timer), terrain work, canAutoWalk
-// and the camp. Never imports render/, ui/ or audio/; anything visible goes out on the bus.
+// game/turn.js — the player's verbs and the live turn pipeline: newGame, step, act, endTurn, worldTick, auto-actions
+// (go / charge / work / rest / walk-to-NPC, one step per tick), terrain work, canAutoWalk and the camp.
+// LIVE: the world no longer waits for the player. core/clock.js calls worldTick() every TIMING.tick ms; that runs the
+// classic turn pipeline (monsters, poison, regen, buffs, day phase, emit('turn')). The player may act once per tick:
+// endTurn() now only marks "acted this tick"; an input that arrives after acting is queued for the next tick.
+// Never imports render/, ui/ or audio/; anything visible goes out on the bus.
 import { G, resetState, say } from '../core/state.js';
 import { emit } from '../core/bus.js';
-import { TIMING, WS, dayInfo } from '../core/config.js';
+import { WS, dayInfo } from '../core/config.js';
 import { R, WK } from '../core/util.js';
 import { INTRO, DAY_LINES, CAMP, ZONE_ENTER, FAR_LINE } from '../data/flavor.js';
 import { SPECIAL_STEP } from '../data/terrain.js';
@@ -18,9 +21,11 @@ import { pickup, pieces } from './loot.js';
 import { tickSpells } from './spells.js';
 
 // ---- module state (only ever touched from functions, never at import time) --------------------------------------
-let timer = 0;            // setTimeout handle of the running auto-action
-let gen = 0;              // generation counter: a stale timer callback sees a different value and does nothing
-let inTurn = false;       // re-entrancy guard for endTurn
+let acted = false;        // the player has already acted this tick
+let rested = false;       // ... and that action was a rest/wait (resting regen)
+let queued = null;        // {dx, dy}: a step pressed after acting, run at the start of the next tick
+let held = null;          // [dx, dy] of a direction key being held: repeats one step per tick
+let inTurn = false;       // re-entrancy guard for the pipeline
 let known = new Set();    // monsters already in view when the auto-action began
 let lastPhase = null;     // last day phase announced
 const zoneSaid = new Map(); // zone id -> turn it was last announced (walking a ragged border must not spam the banner)
@@ -49,7 +54,7 @@ const campNear = r => { const c = G.P.camp; return !!c && !G.dg && Math.abs(c.x 
 /** Start a fresh life: resetState(), initWorld(), place the hero on dry walkable ground near (0,0) (classic spiral),
  *  spawnAround(), calcVis(), say(INTRO), set G.zone, emit('newgame'). */
 export function newGame() {
-  clearTimeout(timer); timer = 0; gen++; inTurn = false; known = new Set(); zoneSaid.clear();
+  inTurn = false; acted = false; rested = false; queued = null; held = null; known = new Set(); zoneSaid.clear();
   resetState();
   G.auto = null;
   safe('resetRares', resetRares);
@@ -96,10 +101,12 @@ export function step(dx, dy) {
 }
 
 /** Keyboard / button verb: cancel any auto-action, then step (or wait when dx = dy = 0) and end the turn.
- *  Returns true if a turn was spent. */
+ *  Already acted this tick: the step is queued for the next one (latest press wins). Returns true if a turn was spent. */
 export function act(dx, dy) {
   if (G.over) return false;
   stopAuto();
+  if (acted) { queued = { dx, dy }; return false; }
+  queued = null;
   if (!dx && !dy) { endTurn(true); return true; }
   const spent = step(dx, dy);
   if (spent) endTurn();
@@ -110,15 +117,40 @@ export function act(dx, dy) {
 // The turn pipeline
 // =====================================================================================================================
 
+/** True while the player may still act this tick. */
+export const canAct = () => !acted && !G.over;
+
+/** Drop a queued step (input.js calls this on key release so a held key does not overshoot). */
+export function clearQueue() { queued = null; }
+
+/** Direction key held down (input.js): repeat that step every tick until setHeld(null). */
+export function setHeld(dir) { held = dir ? [dir[0], dir[1]] : null; if (!dir) queued = null; }
+
+/** The player's action is done for this tick. LIVE: the world does not advance here; worldTick() does. */
+export function endTurn(resting = false) {
+  if (G.over) return;
+  acted = true;
+  if (resting) rested = true;
+}
+
+/** One live world turn, called by core/clock.js. If the player has not acted yet this tick, their queued step or
+ *  running auto-action goes first; then the classic pipeline runs. */
+export function worldTick() {
+  if (inTurn || G.over) return;
+  if (!acted) {
+    if (queued) { const q = queued; queued = null; act(q.dx, q.dy); }
+    else if (held) act(held[0], held[1]);
+    else if (G.auto) runAuto();
+  }
+  const r = rested;
+  acted = false; rested = false;
+  inTurn = true;
+  try { pipeline(r); } finally { inTurn = false; }
+}
+
 /** Advance the world one turn (classic endTurn): turn++, far-side check, poison, regen (resting heals every turn),
  *  drowning + shark spawns in deep water, death check, spawnAround, calcVis, monPhase (twice if P.slowed; skipped on
  *  alternate turns while P.buffs.haste), buffs/MP tick, camp upkeep, day-phase lines, zone change, calcVis, emit('turn'). */
-export function endTurn(resting = false) {
-  if (inTurn || G.over) return;
-  inTurn = true;
-  try { pipeline(!!resting); } finally { inTurn = false; }
-}
-
 function pipeline(resting) {
   const P = G.P;
   G.turn++;
@@ -211,43 +243,34 @@ export function canAutoWalk(x, y) {
 
 const visibleThreats = () => new Set(G.mons.filter(m => isVis(m.x, m.y) && shown(m)));
 
-/** Begin a multi-turn action that runs on a timer until done or interrupted (new enemy in view, damage taken,
+/** Begin a multi-turn action that runs one step per tick until done or interrupted (new enemy in view, damage taken,
  *  any player input). a = {kind:'go', x, y} | {kind:'go', mon} (charge and attack) | {kind:'work', x, y} |
  *  {kind:'rest'} | {kind:'npc', npc} (walk next to an NPC, then emit 'hail'). Sets G.auto. */
 export function startAuto(a) {
   if (!a || G.over) return;
-  clearTimeout(timer); timer = 0; gen++;
-  const my = gen;
+  queued = null;
   G.auto = a;
   known = visibleThreats();
   if (a.mon) known.add(a.mon);
   emit('auto', { auto: a });
   if (a.kind === 'rest' && G.P.hp < G.P.max && campNear(2)) say(CAMP.rest);
-  runTick(my);
+  if (!acted) runAuto();                          // first step right away; the rest ride the clock
 }
 
 /** Cancel the running auto-action, if any. Called by input.js on every tap and key. */
 export function stopAuto() {
-  clearTimeout(timer); timer = 0; gen++;
   if (G.auto) { G.auto = null; emit('auto', { auto: null }); }
 }
 
-function runTick(my) {
-  if (my !== gen) return;
-  let again = false;
-  try { again = tick(); } catch (e) {
+function runAuto() {
+  try { tick(); } catch (e) {
     console.error('[turn.tick]', e);
     say('Something went wrong with your plans. This is not new.', 'sys');
     stopAuto();
-    return;
-  }
-  if (again && my === gen && G.auto) {
-    const a = G.auto;
-    timer = setTimeout(() => runTick(my), a.kind === 'rest' ? TIMING.rest : a.kind === 'work' ? TIMING.work : TIMING.step);
   }
 }
 
-/** One auto-action step. Returns true when the action should continue after the delay. */
+/** One auto-action step. Returns true when the action should continue on the next tick. */
 function tick() {
   const a = G.auto, P = G.P;
   if (!a || G.over) return false;

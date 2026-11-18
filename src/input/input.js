@@ -10,6 +10,8 @@
 // No top-level side effects: everything happens inside initInput(), which is idempotent.
 import { G, say } from '../core/state.js';
 import { TIMING } from '../core/config.js';
+import * as clock from '../core/clock.js';
+import { emit } from '../core/bus.js';
 import { KEY_DIRS } from '../render/iso.js';
 import * as renderer from '../render/renderer.js';
 import * as turn from '../game/turn.js';
@@ -144,6 +146,7 @@ export function initInput(canvas) {
 
   function handleTap(cx, cy) {
     if (inputBlocked()) return;
+    if (clock.isPaused()) { clock.setPaused(false); emit('pause', { paused: false }); }
     turn.stopAuto();
     const tile = renderer.pickTile(cx, cy);
     if (!tile) return;
@@ -203,6 +206,9 @@ export function initInput(canvas) {
     if (key === '+' || key === '=') { e.preventDefault(); zoom(+1); return; }
     if (key === '-' || key === '_') { e.preventDefault(); zoom(-1); return; }
 
+    // pause (solo): P toggles; any verb key also resumes after an automatic (tab-hidden) pause
+    if (key === 'p') { e.preventDefault(); const p = clock.togglePause(); say(p ? 'Paused. The planet holds its breath, briefly, as a favour.' : 'The planet exhales. Things resume wanting to eat you.', 'sys'); emit('pause', { paused: p }); return; }
+
     const dir = KEY_DIRS[key] || KEY_DIRS[e.key];
     const gem = /^[1-4]$/.test(key) ? +key : 0;
     const verb = dir || gem || ('gjbrkm'.includes(key) && key.length === 1);
@@ -213,9 +219,11 @@ export function initInput(canvas) {
     if (t - lastKey < KEY_THROTTLE) { if (dir) e.preventDefault(); return; }
     lastKey = t;
 
+    if (clock.isPaused()) { clock.setPaused(false); emit('pause', { paused: false }); }
     turn.stopAuto();
     if (dir) {
       popup.closePop();
+      turn.setHeld(dir);                                           // LIVE: holding the key keeps walking, one step per tick
       turn.act(dir[0], dir[1]);
     } else if (gem) {
       popup.closePop();
@@ -233,6 +241,12 @@ export function initInput(canvas) {
     }
   }));
 
-  // losing focus mid-gesture must not leave a stale pointer behind
-  window.addEventListener('blur', guard('blur', resetGesture));
+  // LIVE: releasing a direction key drops any step queued for the next tick (no overshoot)
+  document.addEventListener('keyup', guard('keyup', e => {
+    const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+    if (KEY_DIRS[key] || KEY_DIRS[e.key]) turn.setHeld(null);
+  }));
+
+  // losing focus mid-gesture must not leave a stale pointer (or a held key) behind
+  window.addEventListener('blur', guard('blur', () => { resetGesture(); turn.setHeld(null); }));
 }

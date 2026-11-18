@@ -11,20 +11,15 @@ The architecture stays the same: `core/ data/ game/ world/ render/ ui/` plus the
 
 ## Phase 1 — Live (`2.5live`)
 
-**Clock.** `core/clock.js` runs a fixed simulation tick of 5 ticks per second. `game/turn.js` stays the place where every action ends up, but `endTurn()` becomes `tick()`, which the clock calls instead of the player's actions. Rendering runs at 60 fps and smooths movement between ticks.
+**Status: built.** What was done is simpler than the first draft:
 
-**Actions take time.** Each actor has a `ready` tick. An action sets `ready = now + cost`. A base step costs 2 ticks (2.5 tiles a second). Heavier actions such as big weapons, spells and work cost more. Monsters keep their relative speeds, converted to ticks.
-
-**Turn-based numbers.** `TICKS_PER_TURN = 2` lives in `config.js`. Durations in the data files (potions, spells, regeneration, hunger, day length, quest timers) keep their "turns" values and are multiplied by this constant, so the data files don't change.
-
-**Input.**
-- Holding a direction key repeats the step whenever the player is ready.
-- Tap-to-move uses the existing auto-walk path.
-- Auto-actions (go, charge, work, rest) run on the clock instead of `setTimeout`.
-
-**Pausing.** Solo play can pause. Multiplayer cannot.
-
-**Saves** stay the same format. They also store the tick.
+- **`core/clock.js`** calls `turn.worldTick()` every `TIMING.tick` ms (250 ms). One tick is one classic world turn, so all "N turns" durations (potions, spells, regeneration, day length, quests) work unchanged.
+- **One action per tick.** The player can act once per tick. `endTurn()` no longer advances the world: it only marks that the player has acted this tick. Input that arrives after the player has acted is queued for the next tick.
+- **Held direction keys** repeat one step per tick (`turn.setHeld`), so movement doesn't depend on the browser's key repeat.
+- **Auto-actions** (walk, charge, work, rest, walk to NPC) take one step per tick instead of running on `setTimeout`.
+- **The clock holds** while the title screen or a modal panel (gear, journal, menu) is open.
+- **Pausing (solo only).** **P** toggles pause. The game also pauses when the tab is hidden, and any key or tap resumes it. A `pause` event goes out on the bus.
+- **Autosave** now happens every 40 ticks (10 s) or every 5 s, instead of every 10 turns.
 
 ## Phase 2 — Multiplayer (`multiplayer`)
 
@@ -76,7 +71,7 @@ A player who leaves becomes a **Former**: a hostile mob with their name, stats a
 - **Unit tests:** the spawn multiplier, the crowding caps, Former targeting, and turn-to-tick conversion.
 - **Playwright:** 3–4 browser contexts in one room on a local server. Check joining, host migration, a Former spawning and hunting, dropping and picking up items, and the multiplier.
 
-## Open questions
-1. **Disconnect grace.** How long before a dropped connection becomes a Former? Proposed: 20 seconds, so wifi blips don't count.
-2. **What counts as a "room" outdoors.** The 50% cap is clear in dungeons. Proposed for the overworld: the 32×32 area around each player.
-3. **Former strength.** An exact copy of the player, or a copy with a bonus (for example +25% HP)?
+## Decisions
+- **Disconnect grace: 5 minutes.** During that time the character collapses where it stands and nobody can touch it. If the player reconnects in time, they carry on. If not, the character becomes a Former.
+- **A "room" outdoors** is the 32×32-tile area around each player.
+- **A Former** is an exact copy of the player, carrying all their loot and dropping all of it when killed.

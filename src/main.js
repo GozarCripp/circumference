@@ -2,6 +2,7 @@
 import { TIMING, VERSION } from './core/config.js';
 import { G, resetState } from './core/state.js';
 import { on, emit } from './core/bus.js';
+import * as clock from './core/clock.js';
 import * as util from './core/util.js';
 
 // World, rendering and art
@@ -29,8 +30,8 @@ import * as popup from './ui/popup.js';
 import * as gear from './ui/gear.js';
 import * as panels from './ui/panels.js';
 import * as sfx from './audio/sfx.js';
-import { showTitle } from './ui/title.js';
-import { $ } from './ui/dom.js';
+import { showTitle, titleVisible } from './ui/title.js';
+import { $, panelOpen } from './ui/dom.js';
 
 // ---- dev aid: surface errors on screen (phones have no console) ---------------------------
 function toast(msg) {
@@ -89,12 +90,19 @@ async function boot() {
   renderer.resize();
   requestAnimationFrame(frame);
 
+  // LIVE: the world turns on its own. It holds while the title or a modal panel (gear, journal, menu) is up,
+  // and pauses when the tab is hidden (solo only; multiplayer will never pause).
+  clock.startClock(turn.worldTick, TIMING.tick, () => titleVisible() || panelOpen());
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden' && !clock.isPaused()) { clock.setPaused(true); emit('pause', { paused: true, auto: true }); }
+  });
+
   await showTitle({ resume: resumed });                // the game is already live underneath, as in classic
   emit('start', { resumed });                          // first user gesture: sfx unlocks audio here
   try { emit('zone', { zone: world.zoneAt(G.P.x, G.P.y) }); } catch (e) { /* the banner is a courtesy */ }
 }
 
 // Debug / QA handle (Playwright tests and curious players): window.circ.G, window.circ.turn.step(1,0) …
-window.circ = { VERSION, G, util, on, emit, world, dungeon, assets, renderer, lighting, fx, turn, combat, monsters, loot, spells, quests, save, input, hud, popup, gear, panels, sfx, requestRender };
+window.circ = { VERSION, G, util, on, emit, clock, world, dungeon, assets, renderer, lighting, fx, turn, combat, monsters, loot, spells, quests, save, input, hud, popup, gear, panels, sfx, requestRender };
 
 boot().catch(e => { console.error(e); toast('Boot failed: ' + (e.stack || e)); });

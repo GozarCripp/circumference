@@ -27,7 +27,7 @@ export const HH = 8;                   // half height
 export const ZU = 4;                   // one height unit = 4 art pixels of vertical lift
 
 // ---- Timing (ms) -------------------------------------------------------------
-export const TIMING = { step: 95, work: 160, rest: 40, tween: 110, water: 260, dblTap: 400 };
+export const TIMING = { tick: 250, step: 95, work: 160, rest: 40, tween: 110, water: 260, dblTap: 400 };   // tick: one live world turn (ms)
 
 // ---- Day / night ---------------------------------------------------------------
 export const DAY_LEN = 720;            // turns per full day
