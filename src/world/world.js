@@ -396,7 +396,18 @@ export const npcAt = (x, y) => G.npcs.find(n => n.x === x && n.y === y);
 /** Is the hero's campfire on this tile? (Nothing may stand on it.) */
 export const campAt = (x, y) => { const c = G.P.camp; return !!c && !G.dg && c.x === x && c.y === y; };
 /** Walkable and empty (no monster, NPC, campfire or player). */
-export const free = (x, y) => !blocks(x, y) && !monAt(x, y) && !npcAt(x, y) && !campAt(x, y) && !(x === G.P.x && y === G.P.y);
+export const free = (x, y) => !blocks(x, y) && !monAt(x, y) && !npcAt(x, y) && !campAt(x, y) && !(x === G.P.x && y === G.P.y) && !heroAt(x, y);
+
+/** MULTIPLAYER: another living hero standing on (x,y) on the current layer (heroes block monsters, not each other). */
+export function heroAt(x, y) {
+  if (!G.players || G.players.size < 2) return null;
+  const key = G.dg ? G.dg.k + '#' + G.dg.i : 'ow';
+  for (const h of G.players.values()) {
+    if (h === G.P || !h.mp || h.mp.over || h.x !== x || h.y !== y) continue;
+    if ((h.mp.dg ? h.mp.dg.k + '#' + h.mp.fi : 'ow') === key) return h;
+  }
+  return null;
+}
 /** Can monster m stand there? Swimmers need deep water; everything else needs not-deep. */
 export const mfree = (m, x, y) => free(x, y) && (m.ai === 'swim') === isDeep(x, y);
 

@@ -36,7 +36,7 @@ export function resetRares() { rareLive.clear(); warned.clear(); }
 function inPlay(m) {
   if (!m || !(m.hp > 0)) return false;
   if (G.mons && G.mons.includes(m)) return true;
-  const ow = G.P && G.P.ow;                      // overworld monsters are stashed while the hero is in a pyramid
+  const ow = G.world || (G.P && G.P.ow);         // the shared overworld (stashed while this hero is in a pyramid)
   return !!(ow && ow.mons && ow.mons.includes(m));
 }
 function rareAlive(id) {
@@ -44,7 +44,7 @@ function rareAlive(id) {
   if (m && inPlay(m)) return true;
   if (m) rareLive.delete(id);
   if (G.mons && G.mons.some(x => x.rare === id && x.hp > 0)) return true;      // e.g. restored from a save
-  const ow = G.P && G.P.ow;
+  const ow = G.world || (G.P && G.P.ow);
   return !!(ow && ow.mons && ow.mons.some(x => x.rare === id && x.hp > 0));
 }
 
@@ -113,11 +113,11 @@ export function spawnAround() {
     try { spawnNPCs(cx, cy); } catch (e) { warnOnce('npcs', e); }
     emit('chunk', { cx, cy });                         // v0.3: world-life and other spawners hook here (bus catches listener errors)
   }
-  // forget the far-away (in place, other modules may hold the array)
-  for (let i = G.mons.length - 1; i >= 0; i--) {
-    const m = G.mons[i];
-    if (Math.abs(m.x - P.x) >= KEEP_RANGE || Math.abs(m.y - P.y) >= KEEP_RANGE) G.mons.splice(i, 1);
-  }
+  // forget the far-away (in place, other modules may hold the array). MULTIPLAYER: far from EVERY hero outside.
+  const outside = G.players ? [...G.players.values()].filter(h => h.mp && !h.mp.dg && !h.mp.over && h !== P) : [];
+  outside.push(P);
+  const near = m => outside.some(h => Math.abs(m.x - h.x) < KEEP_RANGE && Math.abs(m.y - h.y) < KEEP_RANGE);
+  for (let i = G.mons.length - 1; i >= 0; i--) if (!near(G.mons[i])) G.mons.splice(i, 1);
 }
 
 /** Deep-water check from endTurn: 1-in-10 chance per turn to surface a shark 4+ tiles away (classic). */
@@ -162,6 +162,14 @@ function register(m) {
   G.dex.add(m.name);
   say(`New bestiary entry: ${m.name}.`);
   emit('dex', { name: m.name, count: G.dex.size });
+}
+
+export { AI_RANGE };
+
+/** MULTIPLAYER: one monster takes its turn against the hero currently in context (game/turn.js picks the nearest). */
+export function monAct(m) {
+  if (G.over || !G.mons.includes(m)) return;
+  try { think(m); } catch (e) { warnOnce('ai', e); }
 }
 
 /** Every awake monster within 24 tiles takes its turn (statuses, ranged, melee, movement by behaviour). */

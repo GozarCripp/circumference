@@ -22,6 +22,7 @@ import * as spells from './game/spells.js';
 import * as quests from './game/quests.js';
 import * as potions from './game/potions.js';
 import * as life from './game/life.js';
+import * as players from './game/players.js';
 import { initDirector } from './game/director.js';
 import * as save from './game/save.js';
 import * as input from './input/input.js';
@@ -83,7 +84,8 @@ async function boot() {
   input.initInput($('world'));
 
   const resumed = save.loadGame();                     // true if a saved life was restored (emits 'loaded')
-  if (!resumed) turn.newGame();                        // emits 'newgame'
+  if (!resumed) turn.newGame();                        // emits 'newgame' (and adopts the hero as the room's local player)
+  else players.adopt();                                // a loaded life becomes the room's local player                        // emits 'newgame'
 
   addEventListener('resize', () => { renderer.resize(); requestRender(); });
   addEventListener('orientationchange', () => setTimeout(() => { renderer.resize(); requestRender(); }, 60));
@@ -103,6 +105,6 @@ async function boot() {
 }
 
 // Debug / QA handle (Playwright tests and curious players): window.circ.G, window.circ.turn.step(1,0) …
-window.circ = { VERSION, G, util, on, emit, clock, world, dungeon, assets, renderer, lighting, fx, turn, combat, monsters, loot, spells, quests, save, input, hud, popup, gear, panels, sfx, requestRender };
+window.circ = { VERSION, G, util, on, emit, clock, players, world, dungeon, assets, renderer, lighting, fx, turn, combat, monsters, loot, spells, quests, save, input, hud, popup, gear, panels, sfx, requestRender };
 
 boot().catch(e => { console.error(e); toast('Boot failed: ' + (e.stack || e)); });

@@ -453,6 +453,18 @@ function gatherEntities(now, hr, hz) {
     if (!shown(m)) continue;
     pushEnt(2, m, r, r.x, r.y, tweenZ(r), m.x, m.y, P);
   }
+  // MULTIPLAYER: other living heroes on this layer, where the local hero can see them
+  if (G.players && G.players.size > 1) {
+    const key = G.dg ? G.dg.k + '#' + G.dg.i : 'ow';
+    for (const h of G.players.values()) {
+      if (h === P || !h.mp || h.mp.over || (h.mp.dg ? h.mp.dg.k + '#' + h.mp.fi : 'ow') !== key) continue;
+      if (Math.abs(h.x - P.x) > 16 || Math.abs(h.y - P.y) > 16) continue;
+      const r = track(h, now);
+      if (!isVis(h.x, h.y)) continue;
+      const oe = pushEnt(3, h, r, r.x, r.y, tweenZ(r), h.x, h.y, P);
+      oe.wet = isDeep(h.x, h.y);
+    }
+  }
   // hero last (drawn after anything on the same tile)
   const he = pushEnt(3, P, hr, hr.x, hr.y, hz, P.x, P.y, P);
   hr.dp = he.dp;
@@ -502,7 +514,7 @@ function drawEnt(e, now, ox, oy, xr) {
       return;
     }
     // hero
-    const P = G.P, spr = assets.heroSprite(P, e.wet);
+    const P = e.ref || G.P, spr = assets.heroSprite(P, e.wet);   // e.ref: the local hero or another player
     const wade = !e.wet && wading(P.x, P.y);                    // shallows: the water closes over the ankles
     if (xr) { /* sprite only */ } else if (e.wet) ripple(cx, cy, now, 10, 0); else if (wade) ripple(cx, cy - 2 * S, now, 9, 0); else shadowAt(cx, cy, 9);
     const feign = P.buffs && P.buffs.feign > 0;

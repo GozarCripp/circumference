@@ -23,7 +23,15 @@ The architecture stays the same: `core/ data/ game/ world/ render/ ui/` plus the
 
 ## Phase 2 — Multiplayer (`multiplayer`)
 
-### State refactor
+### State refactor — **status: built (chunk 1)**
+Built as a context switch rather than a rewrite. `game/players.js` keeps every hero in `G.players`. `withPlayer(P, fn)` points the existing single-hero fields (`G.P`, `G.dg`, `G.mons`, `G.items`, `G.npcs`, `G.seen`, `G.vis`, `G.zone`, `G.auto`, `G.over`, `G.log`) at that hero's view, runs `fn`, and switches back. Outside a world tick, the context is always the local hero.
+- **Shared layers.** The overworld (`G.world`) is shared by everyone on it, and so is each dungeon floor, including what has been explored on it. Each hero has their own floor index, field of view, log, auto-action and zone.
+- **The world tick**, per hero: action, then upkeep. Then monsters act layer by layer, each against the nearest living hero on its layer (twice if that hero is slowed, every other tick if they're hasted). Then the day-phase news goes to everyone.
+- **Bus capture.** While a remote hero is in context, `bus.capture` diverts their events into `P.mp.outbox`, ready for the network layer.
+- **Blocking.** Heroes block monsters (`world.heroAt`) but not each other. Monsters are only forgotten when they are far from every hero on the overworld.
+- **Rendering.** The renderer draws the other heroes on the same layer.
+- **Not yet:** quests and the bestiary are still shared (they belong to the room), and saving covers only the local hero.
+
 - The single player becomes many. `G.P` becomes `G.players[id]`, and `G.me` is the local player.
 - **Dungeons are instanced.** `G.dg` becomes `G.dungeons[id]`, and each player points to the one they're in, so players can be anywhere.
 - **Simulation follows the players.** It runs within an activity radius of every living player, and `spawnAround` runs per player.

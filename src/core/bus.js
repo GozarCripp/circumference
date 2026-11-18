@@ -12,7 +12,13 @@ export function on(ev, fn) {
   s.add(fn); return () => s.delete(fn);
 }
 
+let sink = null;       // MULTIPLAYER: while set, emits are captured here instead of dispatched (see game/players.js)
+
+/** Redirect every emit to fn(ev, payload) until capture(null). Returns the previous sink (so captures can nest). */
+export function capture(fn) { const prev = sink; sink = fn || null; return prev; }
+
 export function emit(ev, payload) {
+  if (sink) { try { sink(ev, payload); } catch (e) { console.error('[bus sink]', ev, e); } return; }
   const s = L.get(ev);
   if (s) for (const fn of [...s]) { try { fn(payload); } catch (e) { console.error('[bus]', ev, e); } }
   for (const fn of [...ANY]) { try { fn(ev, payload); } catch (e) { console.error('[bus*]', ev, e); } }
