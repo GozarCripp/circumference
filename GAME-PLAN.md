@@ -74,6 +74,15 @@ The answer was: **no server, and free.** One player's browser hosts the game, an
 ### When everyone leaves
 - **The room remembers.** When the room is reopened with the same code, everyone's Formers are there, and the new arrival is hunted first.
 
+### Loot (owner decision, 2026-11-19)
+- **Hunt-heavy and rich, but nothing that saves you.**
+- **Ordinary monsters:** at least 15% real loot (currently 30%), a small drop (gold or a potion) most of the rest, and nothing about 1 time in 8.
+- **Bosses and rares:** always real loot, plus something small.
+
+### Reloading (2026-11-19)
+- **Reload within 5 minutes:** you pick up your own hero again.
+- **Room empty for more than 5 minutes:** everyone who was in it comes back as a Former.
+
 ### Combat feel (added after the first playtest: monsters were too quick to tap)
 1. **Tap to fight.** A quick tap on a monster makes your hero chase it and keep attacking until it dies or you tap somewhere else.
 2. **Easier taps.** Tapping an empty tile next to a visible monster counts as tapping the monster. Item taps stay exact.
@@ -138,6 +147,9 @@ The folder layout is unchanged: `core/ data/ game/ world/ render/ ui/ input/ aud
 
 Format: `YYYY-MM-DD · branch · what changed (and why)`.
 
+- 2026-11-19 · multiplayer · **Richer loot** (owner: hunt-heavy, Dark Souls / Borderlands feel, nothing that saves you). Ordinary monsters drop real loot (gear or a scroll) 30% of the time, a small drop (gold, or a potion 30% of the time) most of the rest, and nothing 1 time in 8. Bosses and rares get real loot plus something small. Tunable in `DROPS` in `game/loot.js`. Measured over 2,000 kills: 12.7% nothing, 25% gear, 5% scroll, 40% gold, 17% potion.
+- 2026-11-19 · multiplayer · **Fixed: the host couldn't respawn.** The host's death lived only in `G.over`, so `respawn()` saw a living hero and did nothing, leaving a dead hero that couldn't move. Added `players.sync()`, now used by `respawn`, `records` and `roomPlayers`.
+- 2026-11-19 · multiplayer · **Reloading resumes.** A room whose last snapshot is under 5 minutes old resumes: your hero (same browser key) is yours again, and others stay collapsed for the rest of their 5 minutes. Rooms older than that still reopen with everyone as Formers.
 - 2026-11-19 · multiplayer · **Fixed the walk-lock bug** ("Something went wrong with your plans" after learning a first spell). The hidden multiplayer record on each hero was called `P.mp`, the same name the game uses for Motivation Points. Learning a first spell sets MP to its maximum, which overwrote the record and broke walking, sight (the black map) and hosting. The record is now `P.seat` and `seatOf()`. The owner says a similar lock also happened on the old 2.5D build, which may be a separate cause still to confirm.
 - 2026-11-19 · multiplayer · Decision: `/mp/` is the evolution of 2.5D and all work targets it until 3D; classic stays frozen. Bug reported and under investigation: after tapping to walk, a message appears and walking stops working. Not a status effect.
 - 2026-11-19 · multiplayer · Moved the plan to the repository root as `GAME-PLAN.md`, added this change log and the hard rule, and added `CLAUDE.md` so every session follows it.

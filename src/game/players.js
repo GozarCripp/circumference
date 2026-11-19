@@ -66,11 +66,16 @@ export function addPlayer({ id, name = 'Stranger', x, y } = {}) {
 
 export function removePlayer(id) { if (G.players) G.players.delete(id); }
 
+/** Write G's live view back into the hero currently in context, so its record (over, floor, zone...) is current.
+ *  The local hero's record is otherwise only refreshed when another hero takes the context. */
+export function sync() { if (cur) leave(cur); }
+
 export const byKey = key => players().find(p => seatOf(p).key === key);
 export const byPeer = peer => players().find(p => seatOf(p).peer === peer);
 
 /** Plain records of every hero (for the room snapshot). P.ow is reduced to its overworld position. */
 export function records() {
+  sync();
   return players().map(P => {
     const m = seatOf(P), p = {};
     for (const k of Object.keys(P)) if (k !== 'ow' && k !== 'work') p[k] = P[k];

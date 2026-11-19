@@ -242,10 +242,27 @@ export function pickup() {
 }
 
 /** Roll a kill's drop at the monster's tile (30%, bosses and rares always; 1 in 6 drops is a scroll). */
+/** Drop tuning (owner, 2026-11-19: "hunt heavy, Dark Souls / Borderlands rich, but nothing that saves you").
+ *  Ordinary monsters: REAL chance of gear or a scroll (at least 15%); otherwise a SMALL drop (gold, sometimes a potion);
+ *  about NOTHING of them drop nothing at all. Bosses and named rares always drop real loot, plus something small. */
+export const DROPS = { real: .30, nothing: 1 / 8, smallPotion: .3 };
+
+function smallDrop(m) {
+  if (Math.random() < DROPS.smallPotion) {
+    const it = potionItem();
+    if (place(m.x, m.y, it)) say(`It leaves behind a potion: ${it.name}.`, 'loot');
+  } else if (place(m.x, m.y, goldItem())) say('A few coins roll out. Everyone has a price; this was theirs.', 'loot');
+}
+
 export function dropLoot(m) {
   try {
-    if (!m || !(m.boss || m.rare || Math.random() < .3)) return;
+    if (!m) return;
     const strong = !!(m.boss || m.rare), lvl = m.lvl || 1;
+    if (!strong) {
+      const r = Math.random();
+      if (r < DROPS.nothing) return;                                    // the odd one with empty pockets
+      if (r >= DROPS.nothing + DROPS.real) { smallDrop(m); return; }
+    }
     let item;
     if (R(6) === 0) {
       item = scrollItem(randomSpell());
@@ -256,6 +273,7 @@ export function dropLoot(m) {
       say(`It drops something: ${g.name}.`, 'loot');
     }
     place(m.x, m.y, item);
+    if (strong) smallDrop(m);
   } catch (e) { console.error('[loot.dropLoot]', e); }
 }
 

@@ -11,7 +11,7 @@
 //             browser rejoining (same per-room key) picks them back up.
 import { G, say } from '../core/state.js';
 import { on, emit, setMirror } from '../core/bus.js';
-import { WS } from '../core/config.js';
+import { WS, TIMING } from '../core/config.js';
 import { wx } from '../core/util.js';
 import * as turn from '../game/turn.js';
 import * as players from '../game/players.js';
@@ -44,7 +44,7 @@ const sent = new Map();                  // host: peer -> {layer, modsN}
 
 export const roomRole = () => role;
 export const roomCode = () => code;
-export const roomPlayers = () => players.players().map(p => ({ id: p.seat && p.seat.id, name: p.seat && p.seat.name, me: players.isLocal(p),
+export const roomPlayers = () => (players.sync(), players.players()).map(p => ({ id: p.seat && p.seat.id, name: p.seat && p.seat.name, me: players.isLocal(p),
   over: !!(p.seat && p.seat.over), collapsed: !!(p.seat && p.seat.collapsed) }));
 export const shareLink = () => location.origin + location.pathname + '?room=' + code;
 export const netKind = () => (new URLSearchParams(location.search).get('net') === 'local' ? 'local' : 'rtc');
@@ -231,11 +231,38 @@ function reopenRoom(snap) {
   say(`Room ${code} reopens. The planet remembers everyone who left. So do they.`, 'bad');
 }
 
+/** Reopen a room that emptied less than 5 minutes ago (e.g. the host reloaded): your own hero (same browser key) is
+ *  yours again; everyone else lies collapsed for what is left of their 5 minutes, then gets up as a Former. */
+function resumeRoom(snap) {
+  save.restoreSnapshot(snap);
+  G.room = code;
+  const mine = (snap.heroes || []).find(h => h.key === myKey() && !h.over);
+  players.rebuild(snap.heroes || [], mine ? mine.id : null);
+  const gone = Math.round((Date.now() - (snap.t || Date.now())) / TIMING.tick);
+  for (const P of players.players()) {
+    if (mine && P.seat.id === mine.id) continue;
+    if (P.seat.over) { players.removePlayer(P.seat.id); continue; }
+    P.seat.peer = ''; P.seat.collapsed = Math.max(1, G.turn - gone);
+  }
+  if (!mine) {
+    const me = players.addPlayer({ name: myName });
+    players.setLocal(me.seat.id);
+    me.seat.joined = G.turn + 1;
+    placeNearHome(me);
+  }
+  world.calcVis();
+  emit('newgame', {});
+  say(`Room ${code} picks up where it left off.`, 'sys');
+}
+
 function becomeHostFresh(fresh = false) {
   clearTimeout(timer);
   setMirror(false); verbs.setRemote(null);
   const kept = fresh ? null : storedRoom();
-  if (kept && Array.isArray(kept.heroes)) { try { reopenRoom(kept); } catch (e) { console.error('[net] reopen', e); } }
+  if (kept && Array.isArray(kept.heroes)) {
+    const recent = kept.t && Date.now() - kept.t < COLLAPSE_TICKS * TIMING.tick;
+    try { if (recent) resumeRoom(kept); else reopenRoom(kept); } catch (e) { console.error('[net] reopen', e); }
+  }
   G.room = code; role = 'host'; since = Date.now(); hostPeer = T.self;
   const me = players.local();
   Object.assign(me.seat, { key: myKey(), peer: T.self, name: myName, collapsed: 0 });
@@ -294,6 +321,7 @@ function onVerb(m, from) {
 
 /** A dead hero's player starts over: a brand-new naked hero (the newest in the room). */
 function respawn(old) {
+  players.sync();                                                   // the local hero's death lives in G until synced
   if (!old || !old.seat.over) return;
   const { key, peer, name } = old.seat, wasLocal = players.isLocal(old);
   players.removePlayer(old.seat.id);
