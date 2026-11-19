@@ -27,7 +27,7 @@ export const VERBS = {
   attack: m => {
     if (!m || !G.mons.includes(m)) return false;
     if (inRange(m)) { attack(m); turn.endTurn(); return true; }
-    turn.startAuto({ kind: 'go', mon: m });
+    turn.startAuto({ kind: 'go', mon: m, hunt: true });
     return false;
   },
   cast: (id, target) => { const ok = castSpell(id, target); if (ok) turn.endTurn(); return ok; },

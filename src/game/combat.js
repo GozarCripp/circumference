@@ -4,6 +4,7 @@
 // Layering: game/ never imports render/, ui/, audio/ — everything visible goes out through the event bus.
 import { G, say } from '../core/state.js';
 import { emit } from '../core/bus.js';
+import { mpOf } from './players.js';
 import { CON } from '../core/config.js';
 import { R, pick } from '../core/util.js';
 import { HITS, DEATHS, CON_TEXT } from '../data/flavor.js';
@@ -113,6 +114,7 @@ export function hurt(m, d, msg, kind) {
     if (G.over) return;
     const pc = pieces();
     if (G.auto) G.auto.hurt = true;
+    if (m && G.mons && G.mons.includes(m)) mpOf(P).lastHit = m;     // idle heroes swing back (game/turn.js retaliate)
     const name = (m && m.name) || 'something';
     const physical = kind !== 'burn' && kind !== 'poison' && kind !== 'drown';
     if (physical && Math.random() < (pc.ghost || 0) * .08) {

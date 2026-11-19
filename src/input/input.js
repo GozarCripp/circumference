@@ -1,6 +1,8 @@
 // input/input.js — pointer (touch + mouse) and keyboard input.
 //
-//   tap            -> stop any auto-action, inspect the tile (popup)
+//   tap            -> on a monster (or an empty tile right next to one): fight it until it drops.
+//                     Anything else: stop any auto-action, inspect the tile (popup)
+//   press and hold -> inspect the tile (popup), monsters included: throw poison, cast at it, read its card
 //   double-tap     -> same tile within TIMING.dblTap: auto-walk there if turn.canAutoWalk, else run the open card's main
 //                     action (popup.confirmPrimary; risky ones still wait unless Menu > Double-tap is 'confirm all')
 //   drag > 10 px   -> pan the camera to peek (when the renderer exposes panBy / setPan)
@@ -17,6 +19,9 @@ import * as renderer from '../render/renderer.js';
 import * as turn from '../game/turn.js';
 import * as spells from '../game/spells.js';
 import * as verbs from '../game/verbs.js';
+import * as world from '../world/world.js';
+import { shown as monShown } from '../game/monsters.js';
+import { WK } from '../core/util.js';
 import * as popup from '../ui/popup.js';
 import * as dom from '../ui/dom.js';
 import * as title from '../ui/title.js';
@@ -24,7 +29,8 @@ import * as gear from '../ui/gear.js';
 import * as panels from '../ui/panels.js';
 
 const MOVE_SLOP = 10;          // CSS px a pointer may travel and still count as a tap
-const TAP_MAX_MS = 500;        // longest press that still counts as a tap
+const TAP_MAX_MS = 1500;       // longest press that still counts as a tap (or a long press)
+const LONG_MS = 400;           // a press this long inspects instead of acting
 const PINCH_STEP = 1.35;       // distance ratio per zoom step (hysteresis: baseline resets after each step)
 const GESTURE_COOLDOWN = 150;  // ms after the last pointer lifts during which taps are ignored (post-pinch/drag)
 const KEY_THROTTLE = 70;       // ms between key-driven verbs (key repeat allowed, but not a firehose)
@@ -136,7 +142,7 @@ export function initInput(canvas) {
     if (now() < gestureEnd) return;                                  // accidental tap right after a pinch/drag
     if (wasDown.moved || now() - wasDown.t > TAP_MAX_MS) return;
     if (Math.hypot(e.clientX - wasDown.x, e.clientY - wasDown.y) > MOVE_SLOP) return;
-    handleTap(e.clientX, e.clientY);
+    handleTap(e.clientX, e.clientY, now() - wasDown.t >= LONG_MS);
   });
   canvas.addEventListener('pointerup', release);
 
@@ -145,12 +151,30 @@ export function initInput(canvas) {
     resetGesture();
   }));
 
-  function handleTap(cx, cy) {
+  /** The monster a quick tap on (x,y) means: the one standing there, or, if the tile holds no item and no NPC,
+   *  the nearest visible monster on a neighbouring tile. Item taps stay exact. */
+  function fightTarget(x, y) {
+    const here = world.monAt(x, y);
+    if (here && monShown(here)) return here;
+    if (G.items.has(WK(x, y)) || world.npcAt(x, y)) return null;
+    let best = null;
+    for (const m of G.mons) {
+      if (Math.max(Math.abs(m.x - x), Math.abs(m.y - y)) !== 1 || !monShown(m)) continue;
+      if (!best || Math.hypot(m.x - x, m.y - y) < Math.hypot(best.x - x, best.y - y)) best = m;
+    }
+    return best;
+  }
+
+  function handleTap(cx, cy, long = false) {
     if (inputBlocked()) return;
     if (clock.isPaused()) { clock.setPaused(false); emit('pause', { paused: false }); }
     verbs.run('stop');
     const tile = renderer.pickTile(cx, cy);
     if (!tile) return;
+    if (!long) {
+      const m = fightTarget(tile.x, tile.y);
+      if (m) { lastTap = null; popup.closePop(); verbs.run('auto', { kind: 'go', mon: m, hunt: true }); return; }
+    } else { lastTap = null; popup.openPop(tile.x, tile.y, cx, cy); return; }
     const t = now();
     const dbl = !!lastTap && lastTap.x === tile.x && lastTap.y === tile.y && t - lastTap.t < TIMING.dblTap;
     if (dbl) {

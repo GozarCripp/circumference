@@ -153,6 +153,7 @@ export function worldTick() {
       if (t.queued) { const q = t.queued; t.queued = null; act(q.dx, q.dy); }
       else if (t.held) act(t.held[0], t.held[1]);
       else if (G.auto) runAuto();
+      else retaliate(t);
     });
     for (const h of heroes) withPlayer(h, () => {
       const t = T(), r = t.rested;
@@ -166,6 +167,19 @@ export function worldTick() {
   emit('turn', { turn: G.turn, resting: false });
 }
 
+/** Idle and just hit: swing back at whoever did it, if they are still in reach (not while feigning death). */
+function retaliate(t) {
+  const m = t.lastHit;
+  t.lastHit = null;
+  if (!m || G.over || (G.P.buffs && G.P.buffs.feign > 0) || !G.mons.includes(m) || !(m.hp > 0) || !inRange(m)) return;
+  attack(m); endTurn();
+}
+
+/** Monsters MOVE every other tick (heroes outpace them) but attack every tick once next to their hero.
+ *  Flitting things stay quick. */
+const offBeat = m => { m.tk = ((m.tk | 0) + 1) % 2; return m.ai !== 'flit' && m.tk === 1; };
+const nextTo = (m, P) => Math.max(Math.abs(m.x - P.x), Math.abs(m.y - P.y)) <= 1;
+
 function monstersPhase(heroes) {
   const layers = new Map();                                     // layer key -> the mons array of that layer
   for (const h of heroes) { const k = layerOf(h); if (!layers.has(k)) layers.set(k, withPlayer(h, () => G.mons)); }
@@ -174,6 +188,7 @@ function monstersPhase(heroes) {
       if (!mons.includes(m)) continue;
       const target = heroesOn(key, m.x, m.y, AI_RANGE)[0];
       if (!target) continue;
+      if (offBeat(m) && !nextTo(m, target)) continue;
       withPlayer(target, () => {
         if (G.over) return;
         if (G.P.buffs && G.P.buffs.haste > 0 && G.turn % 2) return;
@@ -320,7 +335,11 @@ function tick() {
     }
     if (a.mon) {
       if (!G.mons.includes(a.mon)) return stop();
-      if (inRange(a.mon)) { attack(a.mon); stopAuto(); endTurn(); return false; }
+      if (inRange(a.mon)) {
+        attack(a.mon); endTurn();
+        if (a.hunt && G.mons.includes(a.mon) && a.mon.hp > 0 && !G.over) return true;   // tap-to-fight: keep swinging
+        stopAuto(); return false;
+      }
       tx = a.mon.x; ty = a.mon.y;
     }
     if (tx == null || ty == null) return stop();
@@ -344,7 +363,7 @@ function tick() {
   }
 
   if (G.over || G.auto !== a) return false;
-  const nu = [...visibleThreats()].find(m => !T().known.has(m));
+  const nu = a.hunt ? null : [...visibleThreats()].find(m => !T().known.has(m));   // a hunt ignores newcomers
   if (nu) { say(`You spot ${theName(nu)}. You stop, as is customary.`); return stop(); }
   if (a.hurt && !a.mon) return stop();          // damage taken (set by combat.hurt) interrupts a walk
   return true;
