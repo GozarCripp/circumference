@@ -41,6 +41,10 @@ The answer was: **no server, and free.** One player's browser hosts the game, an
 
 ## 3. Design decisions (all agreed with the owner)
 
+### Versions (owner decision, 2026-11-19)
+- **`/mp/` (the `multiplayer` branch) is the evolution of the 2.5D game.** Until the game goes 3D, every change is aimed at it.
+- **The classic ASCII version (`main`) is finished:** "classic is perfect". Don't change it.
+
 ### Real-time
 - **Turns are out: the game is live.** The world advances on a clock of 4 ticks per second (`TIMING.tick = 250` ms). One tick equals one classic turn, so every "N turns" duration in the data is unchanged.
 - **Player actions.** A player acts at most once per tick, and a held direction key repeats one step per tick.
@@ -131,6 +135,7 @@ The folder layout is unchanged: `core/ data/ game/ world/ render/ ui/ input/ aud
 
 Format: `YYYY-MM-DD · branch · what changed (and why)`.
 
+- 2026-11-19 · multiplayer · Decision: `/mp/` is the evolution of 2.5D and all work targets it until 3D; classic stays frozen. Bug reported and under investigation: after tapping to walk, a message appears and walking stops working. Not a status effect.
 - 2026-11-19 · multiplayer · Moved the plan to the repository root as `GAME-PLAN.md`, added this change log and the hard rule, and added `CLAUDE.md` so every session follows it.
 - 2026-11-19 · multiplayer · Added `docs/GAME-PLAN.md`, the project memory.
 - 2026-11-19 · multiplayer · **Chunk 3:**
