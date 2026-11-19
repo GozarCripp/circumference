@@ -20,7 +20,7 @@ import * as save from '../game/save.js';
 import * as world from '../world/world.js';
 import { newPlayer } from '../core/state.js';
 import { openTransport } from './transport.js';
-import { makeFormer } from '../game/formers.js';
+import { makeFormer, clearSpawn } from '../game/formers.js';
 import { nid, encode, decode, wire, unwire } from './codec.js';
 import { showHang, hideHang } from '../ui/hang.js';
 
@@ -122,6 +122,17 @@ export async function hostRoom() {
   wireTransport();
   becomeHostFresh(true);
   return code;
+}
+
+/** Page transitions go through the cat: show it, then load the destination (no manual reload needed). */
+export function goTo(url, why) { showHang(why); setTimeout(() => { location.href = url; }, 400); }
+const baseURL = () => { const u = new URL(location.href); u.searchParams.delete('room'); return u.toString(); };
+/** Menu > Leave room: back to your solo game. */
+export function exitRoom() { leaveRoom(true); goTo(baseURL(), 'Walking home...'); }
+/** Menu > Join a room: load the room's link. */
+export function goToRoom(c) {
+  const u = new URL(location.href); u.searchParams.set('room', String(c).toUpperCase().replace(/[^A-Z0-9]/g, ''));
+  goTo(u.toString(), 'Knocking on the door of room ' + u.searchParams.get('room') + '...');
 }
 
 /** Leave the room and go back to playing solo (a client gets a fresh solo life). */
@@ -305,7 +316,7 @@ function placeNearHome(P) {
     for (let r = 0; r < 30; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
       if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
       const x = h.x + dx, y = h.y + dy;
-      if (world.free(x, y) && !world.isDeep(x, y)) { P.x = x; P.y = y; G.zone = world.zoneAt(x, y).id; world.calcVis(); return; }
+      if (world.free(x, y) && !world.isDeep(x, y)) { P.x = x; P.y = y; G.zone = world.zoneAt(x, y).id; clearSpawn(P, WS); world.calcVis(); return; }
     }
   });
 }

@@ -292,7 +292,7 @@ function openRoom() {
         nameRow,
         button('Host a room', () => { net.setName(nameIn.value); hidePanel(); net.hostRoom().then(() => openRoom()); }, 'primary'),
         el('label', { class: 'pn-field' }, [el('span', {}, 'Code'), codeIn]),
-        button('Join a room', () => { net.setName(nameIn.value); if (!codeIn.value.trim()) return; hidePanel(); net.joinRoom(codeIn.value); }),
+        button('Join a room', () => { net.setName(nameIn.value); if (!codeIn.value.trim()) return; hidePanel(); net.goToRoom(codeIn.value); }),
         button('Back', openMenu, 'ghost'),
       ], { onClose: openMenu }));
       return;
@@ -309,7 +309,7 @@ function openRoom() {
       copy,
       el('div', { class: 'pn-empty', style: { wordBreak: 'break-all', fontSize: '12px' } }, link),
       ...list,
-      button('Leave room', () => { hidePanel(); net.leaveRoom(); }, 'danger'),
+      button('Leave room', () => { hidePanel(); net.exitRoom(); }, 'danger'),
       button('Back', openMenu, 'ghost'),
     ], { onClose: openMenu }));
   });

@@ -76,8 +76,12 @@ The answer was: **no server, and free.** One player's browser hosts the game, an
 
 ### Loot (owner decision, 2026-11-19)
 - **Hunt-heavy and rich, but nothing that saves you.**
-- **Ordinary monsters:** at least 15% real loot (currently 30%), a small drop (gold or a potion) most of the rest, and nothing about 1 time in 8.
-- **Bosses and rares:** always real loot, plus something small.
+- **Ordinary monsters:** 15% drop gear or a scroll, 1 in 8 drop something small (gold, sometimes a potion), and the rest drop nothing.
+- **Named rares:** always real loot, plus something small.
+- **Biome and pyramid/dungeon bosses:** a guaranteed **Legendary**, plus something small.
+- **Formers** are a fifth slower than heroes (the snail that hunts you), because they carry better loot.
+- **Spawn clearing:** a Former on a respawn point gets thrown to the far side of the planet ("Your former experienced diameter.").
+- **The hang-in-there cat is the global loading screen.** Transitions load their destination page behind it.
 
 ### Reloading (2026-11-19)
 - **Reload within 5 minutes:** you pick up your own hero again.
@@ -147,6 +151,10 @@ The folder layout is unchanged: `core/ data/ game/ world/ render/ ui/ input/ aud
 
 Format: `YYYY-MM-DD · branch · what changed (and why)`.
 
+- 2026-11-19 · multiplayer · **Loot corrected to the owner's numbers.** Ordinary monsters: 15% real loot (gear or a scroll), 1 in 8 a small drop (gold, sometimes a potion), the rest nothing. Rares: real loot plus something small. **Biome and dungeon bosses always drop a Legendary** (`genGear(lvl, 'legendary')`). Measured: 16% real, 12.8% small, 71% nothing; 5 of 5 boss kills dropped Legendaries.
+- 2026-11-19 · multiplayer · **The cat is the global loading screen.** It shows at boot and on room transitions. Leave room and Join room now load the destination page behind the cat (`net.goTo`, `exitRoom`, `goToRoom`), which also fixes being unable to move after leaving a room.
+- 2026-11-19 · multiplayer · **Formers are a fifth slower:** they rest 1 tick in 5 when not adjacent, and their unseen travel takes 25% longer.
+- 2026-11-19 · multiplayer · **Spawn clearing.** A Former within 3 tiles of a hero's (re)spawn point is thrown to the opposite side of the planet, with the log line "Your former experienced diameter." (`formers.clearSpawn`).
 - 2026-11-19 · multiplayer · **Richer loot** (owner: hunt-heavy, Dark Souls / Borderlands feel, nothing that saves you). Ordinary monsters drop real loot (gear or a scroll) 30% of the time, a small drop (gold, or a potion 30% of the time) most of the rest, and nothing 1 time in 8. Bosses and rares get real loot plus something small. Tunable in `DROPS` in `game/loot.js`. Measured over 2,000 kills: 12.7% nothing, 25% gear, 5% scroll, 40% gold, 17% potion.
 - 2026-11-19 · multiplayer · **Fixed: the host couldn't respawn.** The host's death lived only in `G.over`, so `respawn()` saw a living hero and did nothing, leaving a dead hero that couldn't move. Added `players.sync()`, now used by `respawn`, `records` and `roomPlayers`.
 - 2026-11-19 · multiplayer · **Reloading resumes.** A room whose last snapshot is under 5 minutes old resumes: your hero (same browser key) is yours again, and others stay collapsed for the rest of their 5 minutes. Rooms older than that still reopen with everyone as Formers.

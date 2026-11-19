@@ -125,7 +125,7 @@ export const HERO_IDS = ['hero/base', 'hero/swim'].concat(MATERIALS.flatMap(m =>
  *  epithet from EPITHETS. lvl is accepted for API symmetry (classic odds do not depend on it). */
 export function rollQ(lvl, boss) {
   if (typeof lvl === 'boolean') { boss = lvl; lvl = 1; }
-  const r = R(boss ? 30 : 100);
+  const r = boss === 'legendary' ? 0 : R(boss ? 30 : 100);           // 'legendary': biome / dungeon bosses
   const q = { ...QUALITIES[r < 3 ? 0 : r < 12 ? 1 : r < 30 ? 2 : r < 60 ? 3 : 4] };
   if (q.name === 'Legendary') q.epithet = pick(EPITHETS);
   return q;
@@ -134,7 +134,7 @@ export function rollQ(lvl, boss) {
 /** Random gear for monster level lvl; boss = better quality odds (classic genGear). */
 export function genGear(lvl, boss) {
   lvl = Number.isFinite(lvl) ? Math.max(1, lvl) : 1;
-  const q = rollQ(lvl, !!boss), epi = q.epithet ? ' ' + q.epithet : '';
+  const q = rollQ(lvl, boss === 'legendary' ? 'legendary' : !!boss), epi = q.epithet ? ' ' + q.epithet : '';
   if (R(100) < 55) {
     const t = pick(WEAPONS), s = 1 + lvl * .12;
     return {
@@ -243,9 +243,9 @@ export function pickup() {
 
 /** Roll a kill's drop at the monster's tile (30%, bosses and rares always; 1 in 6 drops is a scroll). */
 /** Drop tuning (owner, 2026-11-19: "hunt heavy, Dark Souls / Borderlands rich, but nothing that saves you").
- *  Ordinary monsters: REAL chance of gear or a scroll (at least 15%); otherwise a SMALL drop (gold, sometimes a potion);
- *  about NOTHING of them drop nothing at all. Bosses and named rares always drop real loot, plus something small. */
-export const DROPS = { real: .30, nothing: 1 / 8, smallPotion: .3 };
+ *  Ordinary monsters: REAL (15%) drop gear or a scroll, SMALL (1 in 8) drop gold or sometimes a potion, the rest nothing.
+ *  Named rares always drop real loot plus something small; biome and dungeon bosses always drop a LEGENDARY + small. */
+export const DROPS = { real: .15, small: 1 / 8, smallPotion: .3 };
 
 function smallDrop(m) {
   if (Math.random() < DROPS.smallPotion) {
@@ -260,11 +260,15 @@ export function dropLoot(m) {
     const strong = !!(m.boss || m.rare), lvl = m.lvl || 1;
     if (!strong) {
       const r = Math.random();
-      if (r < DROPS.nothing) return;                                    // the odd one with empty pockets
-      if (r >= DROPS.nothing + DROPS.real) { smallDrop(m); return; }
+      if (r >= DROPS.real + DROPS.small) return;                        // empty pockets
+      if (r >= DROPS.real) { smallDrop(m); return; }
     }
     let item;
-    if (R(6) === 0) {
+    if (m.boss) {
+      const g = genGear(lvl, 'legendary');
+      item = gearItem(g);
+      say(`It drops something legendary: ${g.name}.`, 'loot');
+    } else if (R(6) === 0) {
       item = scrollItem(randomSpell());
       say('It drops a scroll, slightly damp with ambition.', 'loot');
     } else {

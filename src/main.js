@@ -24,6 +24,7 @@ import * as potions from './game/potions.js';
 import * as life from './game/life.js';
 import * as players from './game/players.js';
 import * as net from './net/net.js';
+import { showHang, hideHang } from './ui/hang.js';
 import { initDirector } from './game/director.js';
 import * as save from './game/save.js';
 import * as input from './input/input.js';
@@ -65,6 +66,7 @@ function frame(now) {
 
 // ---- boot ------------------------------------------------------------------------------------
 async function boot() {
+  showHang('Waking the planet up...');                 // the global loading screen
   resetState();                                        // G exists before any module touches it
   await assets.initAssets();                           // generators registered, manifest read (never blocks on PNGs)
   renderer.initRenderer($('world'));
@@ -102,6 +104,7 @@ async function boot() {
     if (document.visibilityState === 'hidden' && !G.room && !clock.isPaused()) { clock.setPaused(true); emit('pause', { paused: true, auto: true }); }
   });
 
+  hideHang();                                          // the title is next (a room link joins once it is dismissed)
   await showTitle({ resume: resumed });                // the game is already live underneath, as in classic
   emit('start', { resumed });                          // first user gesture: sfx unlocks audio here
   try { emit('zone', { zone: world.zoneAt(G.P.x, G.P.y) }); } catch (e) { /* the banner is a courtesy */ }

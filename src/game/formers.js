@@ -95,6 +95,22 @@ export function dropFormerLoot(m) {
   m.loot = null;
 }
 
+/** A hero (re)appearing at (P.x, P.y) on the overworld: any Former loitering on the spawn point is flung to the
+ *  opposite side of the planet. Call in P's context. */
+export function clearSpawn(P, WS) {
+  if (G.dg) return;
+  for (const m of G.mons) {
+    if (!m.former || Math.max(Math.abs(m.x - P.x), Math.abs(m.y - P.y)) > 3) continue;
+    const ox = P.x + WS / 2, oy = P.y + WS / 2;
+    let spot = null;
+    for (let r = 0; r < 20 && !spot; r++) for (let dy = -r; dy <= r && !spot; dy++) for (let dx = -r; dx <= r && !spot; dx++)
+      if (Math.max(Math.abs(dx), Math.abs(dy)) === r && free(ox + dx, oy + dy) && !isDeep(ox + dx, oy + dy)) spot = [ox + dx, oy + dy];
+    if (!spot) continue;
+    m.x = spot[0]; m.y = spot[1]; m.eta = null; m.stage = 0;
+    say(m.former === (P.seat && P.seat.name) ? 'Your former experienced diameter.' : `${m.former}'s former experienced diameter.`, 'bad');
+  }
+}
+
 // ---- the hunt -------------------------------------------------------------------------------------------------------
 /** Every monster list in the world: [array, layer key]. */
 function layers() {
@@ -134,11 +150,13 @@ export function formersPhase() {
       if (layerOf(T) === key && cheb(m, T) <= AI_RANGE) {
         if (m.stage < 3) { m.stage = 3; warn(T, pickOf(DREAD.near)); }
         m.eta = null;
+        m.fk = ((m.fk | 0) + 1) % 5;                                   // a fifth slower than a hero: rests 1 tick in 5
+        if (m.fk === 4 && cheb(m, T) > 1) continue;                    // ...but never pauses a fight
         withPlayer(T, () => monAct(m));
         continue;
       }
       // travelling unseen: arrives within about a minute, wherever the target is
-      if (m.eta == null) { m.eta = Math.min(240, 60 + Math.floor((layerOf(T) === key ? cheb(m, T) : 200) / 2)); m.total = m.eta; m.stage = 0; }
+      if (m.eta == null) { m.eta = Math.round(1.25 * Math.min(240, 60 + Math.floor((layerOf(T) === key ? cheb(m, T) : 200) / 2))); m.total = m.eta; m.stage = 0; }
       m.eta--;
       if (m.stage < 1) { m.stage = 1; warn(T, pickOf(DREAD.far)); }
       else if (m.stage < 2 && m.eta <= m.total / 2) { m.stage = 2; warn(T, pickOf(DREAD.mid)); }
