@@ -5,6 +5,7 @@
 import { G, say } from '../core/state.js';
 import { emit } from '../core/bus.js';
 import { mpOf } from './players.js';
+import { dropFormerLoot } from './formers.js';
 import { CON } from '../core/config.js';
 import { R, pick } from '../core/util.js';
 import { HITS, DEATHS, CON_TEXT } from '../data/flavor.js';
@@ -15,6 +16,7 @@ import { resolveInsurance } from './quests.js';
 /** "the Ogre" / "The Ogre"; names already starting with "The " are not doubled. cap=true capitalises. */
 export function theName(m, cap) {
   const n = (typeof m === 'string' ? m : m && m.name) || 'something';
+  if (m && m.former) return n;                                   // "Ken's Former Self", never "the Ken's..."
   const bare = /^the /i.test(n);
   const rest = bare ? n.slice(4) : n;
   return (cap ? 'The ' : 'the ') + rest;
@@ -100,9 +102,9 @@ export function kill(m) {
     if (m.hp > 0) m.hp = 0;
     say(`${theName(m,1)} ${pick(DEATHS)}. (+${m.xp} XP)`);
     G.P.kills = (G.P.kills || 0) + 1;
-    if (m.name && !m.dboss && !G.dex.has(m.name)) { G.dex.add(m.name); emit('dex', { name: m.name, count: G.dex.size }); }   // normally added on sight (named dungeon bosses are not species)
+    if (m.name && !m.dboss && !m.former && !G.dex.has(m.name)) { G.dex.add(m.name); emit('dex', { name: m.name, count: G.dex.size }); }   // normally added on sight (named dungeon bosses are not species)
     gainXP(m.xp);
-    try { dropLoot(m); } catch (e) { console.error('[combat.dropLoot]', e); }
+    try { if (m.former) dropFormerLoot(m); else dropLoot(m); } catch (e) { console.error('[combat.dropLoot]', e); }
     emit('kill', { mon: m });
   } catch (e) { console.error('[combat.kill]', e); }
 }

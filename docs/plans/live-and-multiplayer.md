@@ -66,7 +66,18 @@ Built as a context switch rather than a rewrite. `game/players.js` keeps every h
 - **Death** ends the run. A player can rejoin with the room code or link, but starts a new character, naked and uninsured.
 - **Player cap:** 8. A 9th player gets a "room full" message.
 
-### Former selves
+### Chunk 3 — **status: built**
+- **`game/formers.js`**:
+  - **Spawn scaling.** `spawnMult` and `spawnCount` (1×–3×, with the fraction rounded up or down at random) apply to overworld chunk spawns and to dungeon floor generation.
+  - **Crowding cap.** `crowded()` refuses a spawn that would fill more than half the walkable tiles: 32×32 outdoors, a 9×9 window in dungeons. One monster per tile was already the rule.
+  - **Exempt:** bosses, rares, NPCs and Formers.
+- **Formers:**
+  - **Becoming one.** A hero who has been collapsed for 5 minutes becomes a Former: an exact copy (max HP, weapon, look) carrying all their gear, potions and gold, which spill out when it dies.
+  - **Head start.** It waits 5 seconds before hunting (15 seconds when a room reopens), and the warning messages still play.
+  - **Hunting.** It goes after the nearest hero until a newer one arrives, then the newest. Out of range or on another floor, it travels unseen and appears 6–12 tiles from its target, with warnings escalating far → mid → near.
+  - **How they're handled.** Formers stay in the normal monster lists (saved and synced), but skip the normal monster phase, are never forgotten, and are drawn as their hero with a red name tag.
+- **Room memory.** Every device stores the room's latest snapshot in local storage. Reopening an emptied room turns every hero who was in it into a Former, and the newcomer arrives as the newest hero.
+
 A player who leaves becomes a **Former**: a hostile mob with their name, stats and look, carrying their whole inventory and equipment. All of it drops when the Former is killed.
 
 **Targeting.** A Former goes after the nearest living player until a newer player arrives. It then locks onto the newest player, and a player who respawns counts as the newest.

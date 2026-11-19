@@ -22,6 +22,8 @@
 // (the swarm spawn tries a few random tiles once every 8 turns). Listeners are wired at import (bus only; no G access).
 import { G, say } from '../core/state.js';
 import { emit, onSim as on } from '../core/bus.js';
+import { spawnCount, crowded } from '../game/formers.js';
+const WALLISH = /wall|void|pillar|rock|deep|lock|tree/;   // tile keys that are not floor (for the crowding cap)
 import { WS, BAG } from '../core/config.js';
 import { R, pick, WK, wx } from '../core/util.js';
 import { h2, dist0, calcVis, blocks, isDeep, isVis, free, monAt, terrKey, siteAtDoor, siteInfo, SITE, dgType } from './world.js';
@@ -195,9 +197,10 @@ function genPyramidFloor(i, t = null) {
     return null;
   };
   const d = D.d + i * 25;
-  for (let k = 0; k < 2 + Math.floor(s * s / 240); k++) {
+  const walk1 = (x, y) => { const k = f.map[y] && f.map[y][x]; return !!k && !WALLISH.test(k); };
+  for (let k = 0, n = spawnCount(2 + Math.floor(s * s / 240)); k < n; k++) {      // MULTIPLAYER: 1x..3x, half-full cap
     const p = spot(rooms.length > 1 ? rooms.slice(1) : rooms);
-    const m = p && mkMon(p[0], p[1], d);
+    const m = p && !crowded(p[0], p[1], f.mons, walk1, 4) && mkMon(p[0], p[1], d);
     if (m) f.mons.push(m);
   }
   if (top) {
@@ -425,7 +428,9 @@ function genTyped(i, t) {
   let nm = 2 + Math.floor(cells.length / 110);
   if (tw === 'swarm') nm = Math.round(nm * 1.5) + 2;
   if (tw === 'hoard') nm += 2;
-  for (let k = 0; k < nm; k++) { const p = spot(); const m = p && mkMon(p[0], p[1], d); if (m) f.mons.push(m); }
+  const walk2 = (x, y) => { const k = f.map[y] && f.map[y][x]; return !!k && !WALLISH.test(k); };
+  nm = spawnCount(nm);                                                            // MULTIPLAYER: 1x..3x, half-full cap
+  for (let k = 0; k < nm; k++) { const p = spot(); const m = p && !crowded(p[0], p[1], f.mons, walk2, 4) && mkMon(p[0], p[1], d); if (m) f.mons.push(m); }
   if (f.key) {                                                // someone is minding the key
     for (const [a, b] of [[1, 0], [0, 1], [-1, 0], [0, -1], [1, 1], [-1, -1]]) {
       const x = f.key[0] + a, y = f.key[1] + b;

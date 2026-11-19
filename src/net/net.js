@@ -20,6 +20,7 @@ import * as save from '../game/save.js';
 import * as world from '../world/world.js';
 import { newPlayer } from '../core/state.js';
 import { openTransport } from './transport.js';
+import { makeFormer } from '../game/formers.js';
 import { nid, encode, decode, wire, unwire } from './codec.js';
 import { showHang, hideHang } from '../ui/hang.js';
 
@@ -119,7 +120,7 @@ export async function hostRoom() {
   setURL(code);
   try { T = await openTransport(netKind(), code); } catch (e) { console.error(e); say('Could not open a room. The internet declined.', 'sys'); code = ''; return ''; }
   wireTransport();
-  becomeHostFresh();
+  becomeHostFresh(true);
   return code;
 }
 
@@ -166,7 +167,7 @@ function onMessage(m, from) {
     case 'v': if (role === 'host') onVerb(m, from); break;
     case 'welcome': if (role !== 'host' || shouldYield(m.snap)) onWelcome(m, from); break;
     case 'view': if ((role === 'client' || role === 'moving') && from === hostPeer) onView(m); break;
-    case 'snap': if (from === hostPeer) { lastSnap = m.snap; roster = m.snap.roster || roster; } break;
+    case 'snap': if (from === hostPeer) { lastSnap = m.snap; roster = m.snap.roster || roster; keepRoom(lastSnap); } break;
     case 'roster':
       if (role === 'host' && from !== T.self && m.since && (m.since < since || (m.since === since && from < T.self))) {
         // two people opened the same room at once: the older host wins, this one joins it
@@ -203,9 +204,38 @@ function onLeave(peer) {
 // Host
 // =====================================================================================================================
 
-function becomeHostFresh() {
+// ---- room memory: every device keeps the room's latest world, so an emptied room can be reopened ----------------------
+const roomKey = () => 'circ.room.' + code;
+function keepRoom(snap) {
+  try { localStorage.setItem(roomKey(), JSON.stringify(snap)); }
+  catch (e) { try { localStorage.removeItem(roomKey()); } catch (_) { /* full and stubborn */ } }
+}
+function storedRoom() { try { const v = localStorage.getItem(roomKey()); return v ? JSON.parse(v) : null; } catch (e) { return null; } }
+
+/** Reopen an emptied room: everyone who was in it is gone, so every hero gets back up as a Former, and this player
+ *  arrives fresh (the newest hero, so the Formers come for them first). */
+function reopenRoom(snap) {
+  save.restoreSnapshot(snap);
+  G.room = code;
+  players.rebuild(snap.heroes || [], null);
+  for (const P of players.players()) {
+    if (!P.mp.over) makeFormer(P, 60);                             // 15 s head start for the newcomer
+    players.removePlayer(P.mp.id);
+  }
+  const me = players.addPlayer({ name: myName });
+  players.setLocal(me.mp.id);
+  me.mp.joined = G.turn + 1;
+  placeNearHome(me);
+  world.calcVis();
+  emit('newgame', {});
+  say(`Room ${code} reopens. The planet remembers everyone who left. So do they.`, 'bad');
+}
+
+function becomeHostFresh(fresh = false) {
   clearTimeout(timer);
   setMirror(false); verbs.setRemote(null);
+  const kept = fresh ? null : storedRoom();
+  if (kept && Array.isArray(kept.heroes)) { try { reopenRoom(kept); } catch (e) { console.error('[net] reopen', e); } }
   G.room = code; role = 'host'; since = Date.now(); hostPeer = T.self;
   const me = players.local();
   Object.assign(me.mp, { key: myKey(), peer: T.self, name: myName, collapsed: 0 });
@@ -297,15 +327,15 @@ function tellAll(msg) { for (const p of players.players()) players.withPlayer(p,
 function hostAfterTick() {
   for (const P of players.players()) {
     const m = P.mp;
-    if (m.collapsed && G.turn - m.collapsed > COLLAPSE_TICKS) {
-      // chunk 3 turns them into a Former; for now the body is simply gone
-      tellAll(`${m.name} never got back up.`);
+    if (m.collapsed && G.turn - m.collapsed > COLLAPSE_TICKS) {   // gone for good: the body gets up without them
+      makeFormer(P);
       players.removePlayer(m.id);
+      roster = roster.filter(r => r.key !== m.key);
       continue;
     }
     if (m.peer && m.peer !== T.self) sendView(P);
   }
-  if (G.turn % SNAP_EVERY === 0) { lastSnap = roomSnapshot(); send({ t: 'snap', snap: lastSnap }); }
+  if (G.turn % SNAP_EVERY === 0) { lastSnap = roomSnapshot(); send({ t: 'snap', snap: lastSnap }); keepRoom(lastSnap); }
 }
 
 const plainP = P => {
@@ -324,7 +354,7 @@ function sendView(P) {
     const out = { t: 'view', turn: G.turn, over: !!G.over, P: plainP(P), dk: G.dg ? G.dg.k : null, fi: G.dg ? G.dg.i : 0, zone: G.zone };
     if (st.layer !== key) { if (G.dg) out.dg = save.packDungeon(G.dg); st.layer = key; }
     const near = o => Math.abs(o.x - P.x) <= VIEW_R && Math.abs(o.y - P.y) <= VIEW_R;
-    out.mons = G.mons.filter(near).map(x => { nid(x); return x; });
+    out.mons = G.mons.filter(near).map(x => { nid(x); return x.loot ? { ...x, loot: null } : x; });   // a Former's bag stays on the host
     out.npcs = G.npcs.filter(near).map(x => { nid(x); return x; });
     out.items = [];
     for (const [k, it] of G.items) {

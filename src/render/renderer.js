@@ -501,6 +501,19 @@ function drawEnt(e, now, ox, oy, xr) {
     }
     if (k === 2) {                                              // monster
       const m = e.ref;
+      if (m.former) {                                            // MULTIPLAYER: a Former wears its player's look, in red
+        const spr = assets.heroSprite(m.look || {}, false);
+        if (!xr) shadowAt(cx, cy, 9);
+        put(spr, cx, cy, 0, undefined, r.flip, a, flashOf(m) || 0);
+        ctx.save();
+        ctx.font = `bold ${Math.max(10, Math.round(4 * S))}px sans-serif`; ctx.textAlign = 'center';
+        ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(8,6,15,.85)'; ctx.fillStyle = '#ff6a6a';
+        const ty = cy - (spr.ay || 24) * S - 4;
+        ctx.strokeText(m.name, cx, ty); ctx.fillText(m.name, cx, ty);
+        ctx.restore();
+        e.cx = cx; e.cy = cy;
+        return;
+      }
       if (r.sver !== artVer) { r.spr = assets.sprite(assets.monSpriteId(m)); r.sver = artVer; }
       const spr = r.spr, swimmer = m.ai === 'swim' || (typeof m.id === 'string' && m.id.startsWith('shark'));
       let by = 0, rows;

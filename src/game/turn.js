@@ -19,6 +19,7 @@ import { spawnAround, maybeSpawnShark, monAct, AI_RANGE, shown, resetRares } fro
 import { attack, inRange, hurt, die, theName } from './combat.js';
 import { pickup, pieces } from './loot.js';
 import { tickSpells } from './spells.js';
+import { formersPhase } from './formers.js';
 import { mpOf, adopt, players, living, withPlayer, layerOf, heroesOn, local } from './players.js';
 
 // ---- module state (only ever touched from functions, never at import time) --------------------------------------
@@ -161,6 +162,7 @@ export function worldTick() {
       if (!G.over) heroPhase(r);
     });
     monstersPhase(heroes);
+    safe('formers', formersPhase);
     worldNews();
     for (const h of heroes) withPlayer(h, () => { if (!G.over) safe('calcVis', calcVis); });
   } finally { inTurn = false; }
@@ -185,7 +187,7 @@ function monstersPhase(heroes) {
   for (const h of heroes) { const k = layerOf(h); if (!layers.has(k)) layers.set(k, withPlayer(h, () => G.mons)); }
   for (const [key, mons] of layers) {
     for (const m of [...mons]) {
-      if (!mons.includes(m)) continue;
+      if (!mons.includes(m) || m.former) continue;                   // Formers hunt on their own (game/formers.js)
       const target = heroesOn(key, m.x, m.y, AI_RANGE)[0];
       if (!target) continue;
       if (offBeat(m) && !nextTo(m, target)) continue;

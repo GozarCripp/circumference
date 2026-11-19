@@ -214,7 +214,7 @@ export function pickup() {
       emit('pickup', { item: it });
     } else if (it.kind === 'gold') {
       G.items.delete(k);
-      const g = 3 + R(8 + P.lvl * 3);
+      const g = it.amt > 0 ? it.amt : 3 + R(8 + P.lvl * 3);              // a Former's purse keeps its exact amount
       P.gold += g;
       say(`You find ${g} gold. The economy thanks you for your participation.`, 'loot');
       emit('pickup', { item: it });

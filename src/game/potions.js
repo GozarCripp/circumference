@@ -161,7 +161,7 @@ function doNuke(known, cname) {
     G.mons.splice(i, 1);
     m.hp = 0;
     P.kills = (P.kills || 0) + 1;
-    if (m.name && !m.dboss && !G.dex.has(m.name)) { G.dex.add(m.name); emit('dex', { name: m.name, count: G.dex.size }); }
+    if (m.name && !m.dboss && !m.former && !G.dex.has(m.name)) { G.dex.add(m.name); emit('dex', { name: m.name, count: G.dex.size }); }
     xp += m.xp | 0;
     emit('kill', { mon: m, by: 'nuke' });
   }

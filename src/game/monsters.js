@@ -9,10 +9,11 @@
 // No top-level side effects: nothing here touches the DOM or reads G at import time.
 import { G, say } from '../core/state.js';
 import { emit } from '../core/bus.js';
+import { spawnCount, crowded } from './formers.js';
 import { WS } from '../core/config.js';
 import { R, pick, mod, WK } from '../core/util.js';
 import { BEAST, SHARKS, RARES, enemyById } from '../data/bestiary.js';
-import { biome, tdist, dist0, free, mfree, isVis, isDeep, los } from '../world/world.js';
+import { biome, tdist, dist0, free, mfree, isVis, isDeep, los, blocks } from '../world/world.js';
 import { hurt, damageMon, theName } from './combat.js';
 import { gearItem, genGear, potionItem, goldItem, scrollItem } from './loot.js';
 import { spawnNPCs } from './quests.js';
@@ -101,8 +102,11 @@ export function spawnAround() {
     };
     try {
       if (cx || cy) {
-        const n = (R(3) === 0 ? 1 : 0) + (d > 60 && R(2) === 0 ? 1 : 0) + (d > 200 ? 1 : 0);
-        for (let i = 0; i < n; i++) { const s = spot(); if (s) G.mons.push(mkMon(s.x, s.y, d)); }
+        const n = spawnCount((R(3) === 0 ? 1 : 0) + (d > 60 && R(2) === 0 ? 1 : 0) + (d > 200 ? 1 : 0));   // MULTIPLAYER: 1x..3x
+        for (let i = 0; i < n; i++) {
+          const s = spot();
+          if (s && !crowded(s.x, s.y, G.mons, (x, y) => !blocks(x, y) && !isDeep(x, y), 16)) G.mons.push(mkMon(s.x, s.y, d));
+        }
       }
       const put = (item) => { const s = spot(); if (s) G.items.set(WK(s.x, s.y), item); };
       if (R(3) === 0) put(potionItem());
@@ -116,7 +120,7 @@ export function spawnAround() {
   // forget the far-away (in place, other modules may hold the array). MULTIPLAYER: far from EVERY hero outside.
   const outside = G.players ? [...G.players.values()].filter(h => h.mp && !h.mp.dg && !h.mp.over && h !== P) : [];
   outside.push(P);
-  const near = m => outside.some(h => Math.abs(m.x - h.x) < KEEP_RANGE && Math.abs(m.y - h.y) < KEEP_RANGE);
+  const near = m => m.former || outside.some(h => Math.abs(m.x - h.x) < KEEP_RANGE && Math.abs(m.y - h.y) < KEEP_RANGE);
   for (let i = G.mons.length - 1; i >= 0; i--) if (!near(G.mons[i])) G.mons.splice(i, 1);
 }
 
@@ -158,7 +162,7 @@ function warnOnce(tag, e) {
 }
 
 function register(m) {
-  if (m.dboss || G.dex.has(m.name)) return;            // v0.3: named dungeon bosses are not bestiary species
+  if (m.dboss || m.former || G.dex.has(m.name)) return;            // v0.3: named dungeon bosses are not bestiary species
   G.dex.add(m.name);
   say(`New bestiary entry: ${m.name}.`);
   emit('dex', { name: m.name, count: G.dex.size });
