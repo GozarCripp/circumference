@@ -118,7 +118,7 @@ export function spawnAround() {
     emit('chunk', { cx, cy });                         // v0.3: world-life and other spawners hook here (bus catches listener errors)
   }
   // forget the far-away (in place, other modules may hold the array). MULTIPLAYER: far from EVERY hero outside.
-  const outside = G.players ? [...G.players.values()].filter(h => h.mp && !h.mp.dg && !h.mp.over && h !== P) : [];
+  const outside = G.players ? [...G.players.values()].filter(h => h.seat && !h.seat.dg && !h.seat.over && h !== P) : [];
   outside.push(P);
   const near = m => m.former || outside.some(h => Math.abs(m.x - h.x) < KEEP_RANGE && Math.abs(m.y - h.y) < KEEP_RANGE);
   for (let i = G.mons.length - 1; i >= 0; i--) if (!near(G.mons[i])) G.mons.splice(i, 1);

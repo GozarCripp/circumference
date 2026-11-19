@@ -20,12 +20,12 @@ import { attack, inRange, hurt, die, theName } from './combat.js';
 import { pickup, pieces } from './loot.js';
 import { tickSpells } from './spells.js';
 import { formersPhase } from './formers.js';
-import { mpOf, adopt, players, living, withPlayer, layerOf, heroesOn, local } from './players.js';
+import { seatOf, adopt, players, living, withPlayer, layerOf, heroesOn, local } from './players.js';
 
 // ---- module state (only ever touched from functions, never at import time) --------------------------------------
-// Per-hero tick state lives on P.mp (game/players.js): acted / rested this tick, queued step, held direction,
+// Per-hero tick state lives on P.seat (game/players.js): acted / rested this tick, queued step, held direction,
 // monsters already known when an auto-action began, zone announcement memory, twice (slowed: monsters act twice).
-const T = () => mpOf(G.P);
+const T = () => seatOf(G.P);
 let inTurn = false;       // re-entrancy guard for the pipeline
 let lastPhase = null;     // last day phase announced
 const ZONE_QUIET = 40;     // turns before re-entering a zone is news again

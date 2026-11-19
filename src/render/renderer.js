@@ -457,7 +457,7 @@ function gatherEntities(now, hr, hz) {
   if (G.players && G.players.size > 1) {
     const key = G.dg ? G.dg.k + '#' + G.dg.i : 'ow';
     for (const h of G.players.values()) {
-      if (h === P || !h.mp || h.mp.over || (h.mp.dg ? h.mp.dg.k + '#' + h.mp.fi : 'ow') !== key) continue;
+      if (h === P || !h.seat || h.seat.over || (h.seat.dg ? h.seat.dg.k + '#' + h.seat.fi : 'ow') !== key) continue;
       if (Math.abs(h.x - P.x) > 16 || Math.abs(h.y - P.y) > 16) continue;
       const r = track(h, now);
       if (!isVis(h.x, h.y)) continue;
@@ -531,15 +531,15 @@ function drawEnt(e, now, ox, oy, xr) {
     const wade = !e.wet && wading(P.x, P.y);                    // shallows: the water closes over the ankles
     if (xr) { /* sprite only */ } else if (e.wet) ripple(cx, cy, now, 10, 0); else if (wade) ripple(cx, cy - 2 * S, now, 9, 0); else shadowAt(cx, cy, 9);
     const feign = P.buffs && P.buffs.feign > 0;
-    const down = P.mp && P.mp.collapsed;                       // MULTIPLAYER: a disconnected hero lies there, faded
+    const down = P.seat && P.seat.collapsed;                       // MULTIPLAYER: a disconnected hero lies there, faded
     put(spr, cx, cy + (e.wet ? Math.round(Math.sin(now / 420)) * S : 0), 0, wade ? spr.ay - 3 : undefined, r.flip, (feign ? .55 : 1) * (down ? .4 : 1) * a, flashOf(P) || 0);
     e.cx = cx; e.cy = cy;
-    if (P !== G.P && P.mp && P.mp.name) {                       // MULTIPLAYER: name tag over other heroes
+    if (P !== G.P && P.seat && P.seat.name) {                       // MULTIPLAYER: name tag over other heroes
       ctx.save();
       ctx.font = `bold ${Math.max(10, Math.round(5 * S))}px sans-serif`; ctx.textAlign = 'center';
       ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(8,6,15,.85)'; ctx.fillStyle = down ? '#9a8fb0' : '#8fd3ff';
       const ty = cy - (spr.ay || 24) * S - 4;
-      const label = down ? P.mp.name + ' (zzz)' : P.mp.name;
+      const label = down ? P.seat.name + ' (zzz)' : P.seat.name;
       ctx.strokeText(label, cx, ty); ctx.fillText(label, cx, ty);
       ctx.restore();
     }

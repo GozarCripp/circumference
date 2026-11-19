@@ -13,7 +13,7 @@ import { G, say } from '../core/state.js';
 import { WK } from '../core/util.js';
 import { mkMon, monAct, AI_RANGE } from './monsters.js';
 import { gearItem, potionItem, goldItem } from './loot.js';
-import { living, withPlayer, layerOf, mpOf } from './players.js';
+import { living, withPlayer, layerOf, seatOf } from './players.js';
 import { free, isDeep } from '../world/world.js';
 
 // ---- spawn scaling --------------------------------------------------------------------------------------------------
@@ -52,7 +52,7 @@ const warn = (P, msg) => withPlayer(P, () => say(msg, 'bad'));
 /** Turn hero P into a Former on P's own tile and layer. The caller removes the hero afterwards.
  *  wait: ticks it stands there getting its bearings before the hunt starts (a head start for whoever is nearby). */
 export function makeFormer(P, wait = 20) {
-  const name = (P.mp && P.mp.name) || 'Someone';
+  const name = (P.seat && P.seat.name) || 'Someone';
   return withPlayer(P, () => {
     const m = mkMon(P.x, P.y, 0, 0);
     const w = P.wep || {};
@@ -109,7 +109,7 @@ const cheb = (a, b) => Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
 /** Newest hero who arrived after this Former got up; otherwise the nearest (same layer first). */
 function pickTarget(m, key, heroes) {
   let newest = null;
-  for (const h of heroes) if (mpOf(h).joined > m.born && (!newest || mpOf(h).joined > mpOf(newest).joined)) newest = h;
+  for (const h of heroes) if (seatOf(h).joined > m.born && (!newest || seatOf(h).joined > seatOf(newest).joined)) newest = h;
   if (newest) return newest;
   let best = null, bd = Infinity;
   for (const h of heroes) { const d = (layerOf(h) === key ? 0 : 100000) + cheb(m, h); if (d < bd) { bd = d; best = h; } }
@@ -124,7 +124,7 @@ export function formersPhase() {
     for (const m of arr.filter(x => x.former && x.hp > 0)) {
       const T = pickTarget(m, key, heroes);
       if (!T) continue;
-      const tid = mpOf(T).id;
+      const tid = seatOf(T).id;
       if (m.tid !== tid) { m.tid = tid; m.eta = null; m.stage = 0; }
       if (m.wait > 0) {                                              // still getting up: only the dread arrives
         m.wait--;

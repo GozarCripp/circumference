@@ -403,8 +403,8 @@ export function heroAt(x, y) {
   if (!G.players || G.players.size < 2) return null;
   const key = G.dg ? G.dg.k + '#' + G.dg.i : 'ow';
   for (const h of G.players.values()) {
-    if (h === G.P || !h.mp || h.mp.over || h.mp.collapsed || h.x !== x || h.y !== y) continue;
-    if ((h.mp.dg ? h.mp.dg.k + '#' + h.mp.fi : 'ow') === key) return h;
+    if (h === G.P || !h.seat || h.seat.over || h.seat.collapsed || h.x !== x || h.y !== y) continue;
+    if ((h.seat.dg ? h.seat.dg.k + '#' + h.seat.fi : 'ow') === key) return h;
   }
   return null;
 }

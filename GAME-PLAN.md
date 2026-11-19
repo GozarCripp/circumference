@@ -121,6 +121,9 @@ The folder layout is unchanged: `core/ data/ game/ world/ render/ ui/ input/ aud
 - **`docs/ARCHITECTURE.md`** is referenced in code comments but doesn't exist yet.
 - **Networking limits.** Players on strict networks may fail to connect, because there's only public STUN and no TURN relay yet. A free TURN service (for example Cloudflare) could be added to `net/transport.js` (`rtcConfig`).
 
+- **Possible second walk-lock cause on the old 2.5D build.** The owner saw a similar lock before `/mp/` existed. Watch for it on `/mp/` now that the `P.mp` clash is fixed.
+- **The map going black when zoomed out.** Probably the same `P.mp` clash, since sight wasn't being updated. Recheck after the fix.
+
 ## 6. Ideas parked
 - A "ponytail" plugin pass over the codebase. The plugin isn't in the catalog, so its purpose is unknown; ask the owner what it does before running it.
 
@@ -135,6 +138,7 @@ The folder layout is unchanged: `core/ data/ game/ world/ render/ ui/ input/ aud
 
 Format: `YYYY-MM-DD · branch · what changed (and why)`.
 
+- 2026-11-19 · multiplayer · **Fixed the walk-lock bug** ("Something went wrong with your plans" after learning a first spell). The hidden multiplayer record on each hero was called `P.mp`, the same name the game uses for Motivation Points. Learning a first spell sets MP to its maximum, which overwrote the record and broke walking, sight (the black map) and hosting. The record is now `P.seat` and `seatOf()`. The owner says a similar lock also happened on the old 2.5D build, which may be a separate cause still to confirm.
 - 2026-11-19 · multiplayer · Decision: `/mp/` is the evolution of 2.5D and all work targets it until 3D; classic stays frozen. Bug reported and under investigation: after tapping to walk, a message appears and walking stops working. Not a status effect.
 - 2026-11-19 · multiplayer · Moved the plan to the repository root as `GAME-PLAN.md`, added this change log and the hard rule, and added `CLAUDE.md` so every session follows it.
 - 2026-11-19 · multiplayer · Added `docs/GAME-PLAN.md`, the project memory.

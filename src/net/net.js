@@ -44,8 +44,8 @@ const sent = new Map();                  // host: peer -> {layer, modsN}
 
 export const roomRole = () => role;
 export const roomCode = () => code;
-export const roomPlayers = () => players.players().map(p => ({ id: p.mp && p.mp.id, name: p.mp && p.mp.name, me: players.isLocal(p),
-  over: !!(p.mp && p.mp.over), collapsed: !!(p.mp && p.mp.collapsed) }));
+export const roomPlayers = () => players.players().map(p => ({ id: p.seat && p.seat.id, name: p.seat && p.seat.name, me: players.isLocal(p),
+  over: !!(p.seat && p.seat.over), collapsed: !!(p.seat && p.seat.collapsed) }));
 export const shareLink = () => location.origin + location.pathname + '?room=' + code;
 export const netKind = () => (new URLSearchParams(location.search).get('net') === 'local' ? 'local' : 'rtc');
 
@@ -58,7 +58,7 @@ export function newCode() {
 /** This browser's identity in room `code`: the same key on reconnect picks your collapsed hero back up. The tab keeps
  *  its own copy (sessionStorage) so a second tab of the same browser can be re-keyed into a separate hero. */
 function myKey(fresh = false) {
-  const k = 'circ.mp.key.' + code, mk = () => Math.random().toString(36).slice(2, 12);
+  const k = 'circ.seat.key.' + code, mk = () => Math.random().toString(36).slice(2, 12);
   try {
     let v = fresh ? '' : (sessionStorage.getItem(k) || localStorage.getItem(k));
     if (!v) v = mk();
@@ -136,7 +136,7 @@ export async function leaveRoom(quiet = false) {
   if (!quiet) {
     setURL(null);
     if (wasClient) turn.newGame();
-    else if (G.players) for (const p of players.players()) if (!players.isLocal(p)) players.removePlayer(p.mp.id);
+    else if (G.players) for (const p of players.players()) if (!players.isLocal(p)) players.removePlayer(p.seat.id);
     code = '';
     emit('room', { role });
   }
@@ -186,9 +186,9 @@ function onLeave(peer) {
   if (role === 'host') {
     const P = players.byPeer(peer);
     if (P) {
-      P.mp.peer = ''; P.mp.held = null; P.mp.queued = null; P.mp.auto = null;
-      if (!P.mp.over) P.mp.collapsed = G.turn || 1;
-      tellAll(`${P.mp.name} collapses where they stand. Nothing will touch them for a while.`);
+      P.seat.peer = ''; P.seat.held = null; P.seat.queued = null; P.seat.auto = null;
+      if (!P.seat.over) P.seat.collapsed = G.turn || 1;
+      tellAll(`${P.seat.name} collapses where they stand. Nothing will touch them for a while.`);
     }
     roster = roster.filter(r => r.peer !== peer);
     sent.delete(peer);
@@ -219,12 +219,12 @@ function reopenRoom(snap) {
   G.room = code;
   players.rebuild(snap.heroes || [], null);
   for (const P of players.players()) {
-    if (!P.mp.over) makeFormer(P, 60);                             // 15 s head start for the newcomer
-    players.removePlayer(P.mp.id);
+    if (!P.seat.over) makeFormer(P, 60);                             // 15 s head start for the newcomer
+    players.removePlayer(P.seat.id);
   }
   const me = players.addPlayer({ name: myName });
-  players.setLocal(me.mp.id);
-  me.mp.joined = G.turn + 1;
+  players.setLocal(me.seat.id);
+  me.seat.joined = G.turn + 1;
   placeNearHome(me);
   world.calcVis();
   emit('newgame', {});
@@ -238,8 +238,8 @@ function becomeHostFresh(fresh = false) {
   if (kept && Array.isArray(kept.heroes)) { try { reopenRoom(kept); } catch (e) { console.error('[net] reopen', e); } }
   G.room = code; role = 'host'; since = Date.now(); hostPeer = T.self;
   const me = players.local();
-  Object.assign(me.mp, { key: myKey(), peer: T.self, name: myName, collapsed: 0 });
-  roster = [{ peer: T.self, key: me.mp.key, id: me.mp.id, name: myName }];
+  Object.assign(me.seat, { key: myKey(), peer: T.self, name: myName, collapsed: 0 });
+  roster = [{ peer: T.self, key: me.seat.key, id: me.seat.id, name: myName }];
   hideHang();
   say(`Room ${code} is open. Share the link or the code; up to ${MAX_PLAYERS} heroes.`, 'sys');
   emit('room', { role, code });
@@ -248,26 +248,26 @@ function becomeHostFresh(fresh = false) {
 function onHello(m, from) {
   const already = players.byPeer(from);
   if (already) {                                                     // a repeated hello from the same connection
-    send({ t: 'welcome', you: already.mp.id, snap: roomSnapshot() }, from);
+    send({ t: 'welcome', you: already.seat.id, snap: roomSnapshot() }, from);
     return;
   }
   let P = m.key ? players.byKey(m.key) : null;
-  if (P && (players.isLocal(P) || (P.mp.peer && P.mp.peer !== from && T.peers().includes(P.mp.peer)))) {
+  if (P && (players.isLocal(P) || (P.seat.peer && P.seat.peer !== from && T.peers().includes(P.seat.peer)))) {
     send({ t: 'rekey', key: m.key }, from);                         // that hero is already being played (another tab)
     return;
   }
-  if (P && P.mp.over) { players.removePlayer(P.mp.id); P = null; }    // a dead hero stays dead: start fresh
+  if (P && P.seat.over) { players.removePlayer(P.seat.id); P = null; }    // a dead hero stays dead: start fresh
   if (!P) {
-    if (players.players().filter(p => !p.mp.over).length >= MAX_PLAYERS) { send({ t: 'full', code }, from); return; }
+    if (players.players().filter(p => !p.seat.over).length >= MAX_PLAYERS) { send({ t: 'full', code }, from); return; }
     P = players.addPlayer({ name: String(m.name || 'Stranger').slice(0, 16) });
     placeNearHome(P);
-    tellAll(`${P.mp.name} wakes up nearby, naked and uninsured.`);
-  } else tellAll(`${P.mp.name} stirs and gets back up.`);
-  Object.assign(P.mp, { key: m.key, peer: from, collapsed: 0, name: String(m.name || P.mp.name).slice(0, 16) });
+    tellAll(`${P.seat.name} wakes up nearby, naked and uninsured.`);
+  } else tellAll(`${P.seat.name} stirs and gets back up.`);
+  Object.assign(P.seat, { key: m.key, peer: from, collapsed: 0, name: String(m.name || P.seat.name).slice(0, 16) });
   roster = roster.filter(r => r.key !== m.key && r.peer !== from);
-  roster.push({ peer: from, key: m.key, id: P.mp.id, name: P.mp.name });
+  roster.push({ peer: from, key: m.key, id: P.seat.id, name: P.seat.name });
   sent.set(from, { layer: null, modsN: -1 });
-  send({ t: 'welcome', you: P.mp.id, snap: roomSnapshot() }, from);
+  send({ t: 'welcome', you: P.seat.id, snap: roomSnapshot() }, from);
   broadcastRoster();
   emit('room', { role, code });
 }
@@ -285,29 +285,29 @@ function placeNearHome(P) {
 
 function onVerb(m, from) {
   const P = players.byPeer(from);
-  if (!P || P.mp.collapsed) return;
-  if (m.n === 'respawn') { if (P.mp.over) respawn(P); return; }
-  if (P.mp.over || !Object.prototype.hasOwnProperty.call(verbs.VERBS, m.n)) return;
+  if (!P || P.seat.collapsed) return;
+  if (m.n === 'respawn') { if (P.seat.over) respawn(P); return; }
+  if (P.seat.over || !Object.prototype.hasOwnProperty.call(verbs.VERBS, m.n)) return;
   const args = Array.isArray(m.a) ? m.a : [];
   players.withPlayer(P, () => verbs.VERBS[m.n](...decode(args)));
 }
 
 /** A dead hero's player starts over: a brand-new naked hero (the newest in the room). */
 function respawn(old) {
-  if (!old || !old.mp.over) return;
-  const { key, peer, name } = old.mp, wasLocal = players.isLocal(old);
-  players.removePlayer(old.mp.id);
+  if (!old || !old.seat.over) return;
+  const { key, peer, name } = old.seat, wasLocal = players.isLocal(old);
+  players.removePlayer(old.seat.id);
   const P = players.addPlayer({ name });
-  Object.assign(P.mp, { key, peer });
+  Object.assign(P.seat, { key, peer });
   placeNearHome(P);
   if (wasLocal) {
-    players.setLocal(P.mp.id);
-    roster = roster.map(r => (r.key === key ? { ...r, id: P.mp.id } : r));
+    players.setLocal(P.seat.id);
+    roster = roster.map(r => (r.key === key ? { ...r, id: P.seat.id } : r));
     emit('newgame', {});
   } else if (peer) {
-    roster = roster.map(r => (r.peer === peer ? { ...r, id: P.mp.id } : r));
+    roster = roster.map(r => (r.peer === peer ? { ...r, id: P.seat.id } : r));
     sent.set(peer, { layer: null, modsN: -1 });
-    send({ t: 'welcome', you: P.mp.id, snap: roomSnapshot() }, peer);
+    send({ t: 'welcome', you: P.seat.id, snap: roomSnapshot() }, peer);
   }
   tellAll(`${name} is born again, naked and uninsured. Some people never learn.`);
 }
@@ -326,7 +326,7 @@ function tellAll(msg) { for (const p of players.players()) players.withPlayer(p,
 
 function hostAfterTick() {
   for (const P of players.players()) {
-    const m = P.mp;
+    const m = P.seat;
     if (m.collapsed && G.turn - m.collapsed > COLLAPSE_TICKS) {   // gone for good: the body gets up without them
       makeFormer(P);
       players.removePlayer(m.id);
@@ -347,7 +347,7 @@ const plainP = P => {
 const torus = (a, b) => { const d = Math.abs(wx(a) - wx(b)); return Math.min(d, WS - d); };
 
 function sendView(P) {
-  const m = P.mp, st = sent.get(m.peer) || { layer: null, modsN: -1 };
+  const m = P.seat, st = sent.get(m.peer) || { layer: null, modsN: -1 };
   sent.set(m.peer, st);
   const v = players.withPlayer(P, () => {
     const key = G.dg ? G.dg.k + '#' + G.dg.i : 'ow';
@@ -366,8 +366,8 @@ function sendView(P) {
   });
   if (G.mods.size !== st.modsN) { v.mods = [...G.mods]; st.modsN = G.mods.size; }
   v.heroes = players.players().filter(h => h !== P).map(h => ({
-    id: h.mp.id, name: h.mp.name, x: h.x, y: h.y, dk: h.mp.dg ? h.mp.dg.k : null, fi: h.mp.fi, over: h.mp.over,
-    collapsed: h.mp.collapsed, hp: h.hp, max: h.max, lvl: h.lvl, arm: h.arm, wep: h.wep, buffs: h.buffs,
+    id: h.seat.id, name: h.seat.name, x: h.x, y: h.y, dk: h.seat.dg ? h.seat.dg.k : null, fi: h.seat.fi, over: h.seat.over,
+    collapsed: h.seat.collapsed, hp: h.hp, max: h.max, lvl: h.lvl, arm: h.arm, wep: h.wep, buffs: h.buffs,
   }));
   if (G.turn % SNAP_EVERY === 1) v.q = { quests: G.quests, dex: [...G.dex], run: G.run, home: G.home };
   send(v, m.peer);
@@ -414,17 +414,17 @@ function onView(v) {
   }
   const D = v.dk ? G.pyr.get(v.dk) : null;
   if (v.dk && !(D && D.floors[v.fi])) return;                     // floor not here yet: the next view brings it
-  Object.assign(P.mp, { dg: D, fi: D ? v.fi : 0, zone: v.zone, over: !!v.over });
+  Object.assign(P.seat, { dg: D, fi: D ? v.fi : 0, zone: v.zone, over: !!v.over });
   if (v.mods) for (const [k, key] of v.mods) if (G.mods.get(k) !== key) { const [x, y] = k.split(',').map(Number); world.setTerrain(x, y, key); }
   if (v.q) { G.quests = v.q.quests; G.dex = new Set(v.q.dex); G.run = v.q.run || {}; if (v.q.home) G.home = v.q.home; }
   // other heroes
-  const keep = new Set([P.mp.id]);
+  const keep = new Set([P.seat.id]);
   for (const h of v.heroes || []) {
     keep.add(h.id);
     let o = G.players.get(h.id);
-    if (!o) { o = newPlayer(); players.mpOf(o).id = h.id; G.players.set(h.id, o); }
+    if (!o) { o = newPlayer(); players.seatOf(o).id = h.id; G.players.set(h.id, o); }
     Object.assign(o, { x: h.x, y: h.y, hp: h.hp, max: h.max, lvl: h.lvl, arm: h.arm, wep: h.wep, buffs: h.buffs });
-    Object.assign(o.mp, { name: h.name, dg: h.dk ? (G.pyr.get(h.dk) || { k: h.dk, floors: [] }) : null, fi: h.fi | 0, over: !!h.over, collapsed: h.collapsed || 0 });
+    Object.assign(o.seat, { name: h.name, dg: h.dk ? (G.pyr.get(h.dk) || { k: h.dk, floors: [] }) : null, fi: h.fi | 0, over: !!h.over, collapsed: h.collapsed || 0 });
   }
   for (const id of [...G.players.keys()]) if (!keep.has(id)) G.players.delete(id);
   players.refresh();                                              // G now shows the local hero's layer
@@ -469,10 +469,10 @@ function becomeHostFrom(oldHost) {
   const alive = new Set(T.peers());
   const keep = [];
   for (const P of players.players()) {
-    const r = (lastSnap.roster || []).find(x => x.key === P.mp.key);
-    if (players.isLocal(P)) { P.mp.peer = T.self; P.mp.collapsed = 0; keep.unshift({ peer: T.self, key: P.mp.key, id: P.mp.id, name: P.mp.name }); }
-    else if (r && r.peer !== oldHost && alive.has(r.peer)) { P.mp.peer = r.peer; keep.push({ peer: r.peer, key: P.mp.key, id: P.mp.id, name: P.mp.name }); }
-    else { P.mp.peer = ''; if (!P.mp.over && !P.mp.collapsed) P.mp.collapsed = G.turn || 1; }
+    const r = (lastSnap.roster || []).find(x => x.key === P.seat.key);
+    if (players.isLocal(P)) { P.seat.peer = T.self; P.seat.collapsed = 0; keep.unshift({ peer: T.self, key: P.seat.key, id: P.seat.id, name: P.seat.name }); }
+    else if (r && r.peer !== oldHost && alive.has(r.peer)) { P.seat.peer = r.peer; keep.push({ peer: r.peer, key: P.seat.key, id: P.seat.id, name: P.seat.name }); }
+    else { P.seat.peer = ''; if (!P.seat.over && !P.seat.collapsed) P.seat.collapsed = G.turn || 1; }
   }
   roster = keep;
   sent.clear();
