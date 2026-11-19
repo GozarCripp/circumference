@@ -1,6 +1,8 @@
 # Circumference: Game Plan and Project Memory
 
-This is the single source of truth for where the project stands, so nothing is lost between sessions. Update it whenever a decision is made or a piece ships.
+This is the single source of truth for where the project stands, so nothing is lost between sessions.
+
+> **HARD RULE:** every change to the project is logged in this file, in **§8 Change log** (newest first), in the same commit as the change. Decisions also go into §3, and new known issues into §5. When memory is compacted or anything about past work is unclear, read this file first.
 
 Technical detail per chunk lives in `docs/plans/live-and-multiplayer.md`.
 
@@ -98,7 +100,7 @@ The folder layout is unchanged: `core/ data/ game/ world/ render/ ui/ input/ aud
 - **Game:** `game/players.js`, `game/verbs.js`, `game/formers.js`
 - **Network:** `net/net.js`, `net/transport.js`, `net/codec.js`, `net/vendor/trystero.min.js`
 - **UI:** `ui/hang.js`
-- **Docs:** `docs/plans/live-and-multiplayer.md`, `docs/GAME-PLAN.md` (this file)
+- **Docs:** `docs/plans/live-and-multiplayer.md`, `GAME-PLAN.md` (this file, at the repository root), `CLAUDE.md`
 
 ---
 
@@ -122,3 +124,29 @@ The folder layout is unchanged: `core/ data/ game/ world/ render/ ui/ input/ aud
 - **Approach:** Playwright scripts drive the game through `window.circ` (the debug handle) and the `?net=local` transport, with several tabs in one browser context.
 - **Covered:** solo soak; held keys; two heroes; dungeon split; join/move/attack; host handover with three tabs; disconnect, reconnect and respawn; tap-to-fight for host and client; monster pace; Former life cycle; room reopen.
 - **Not testable in the dev sandbox:** real WebRTC over the internet. It's confirmed working by the owner's playtest.
+
+---
+
+## 8. Change log (newest first)
+
+Format: `YYYY-MM-DD · branch · what changed (and why)`.
+
+- 2026-11-19 · multiplayer · Moved the plan to the repository root as `GAME-PLAN.md`, added this change log and the hard rule, and added `CLAUDE.md` so every session follows it.
+- 2026-11-19 · multiplayer · Added `docs/GAME-PLAN.md`, the project memory.
+- 2026-11-19 · multiplayer · **Chunk 3:**
+  - The spawn multiplier (1×–3×) and the 50% crowding cap.
+  - Formers: exact copies carrying all their loot, with hunting, warning messages, and a 5 s head start (15 s when a room reopens).
+  - Room memory, so a reopened room raises everyone who left as Formers.
+  - Formers aren't prefixed with "the" in messages and stay out of the bestiary.
+- 2026-11-19 · multiplayer · **Combat feel** (after the first playtest found monsters too fast to tap): tap to fight, near-miss taps, press and hold to inspect, monsters move at half speed but attack at full rate, and idle heroes hit back.
+- 2026-11-18 · multiplayer · Pages: unique artifact name per run attempt, after re-runs failed with "Multiple artifacts named github-pages". The owner also added deployment branch rules for `multiplayer` and `foreverquest-uncircumferenced` in the `github-pages` environment.
+- 2026-11-18 · multiplayer · Pages workflow publishes the `multiplayer` branch at `/mp/`. Pushing the same change to `main` and `foreverquest-uncircumferenced` was blocked by the session's safety check, and is still pending.
+- 2026-11-18 · multiplayer · **MP chunk 2:**
+  - Online rooms: bundled Trystero over WebRTC, plus `?net=local` for testing.
+  - The host runs the world, and clients mirror it.
+  - Host handover behind the "hang in there!" cat screen.
+  - The 5-minute collapse and reconnect, and respawning.
+  - The Play together panel and name tags.
+- 2026-11-18 · multiplayer · **MP chunk 1:** many heroes in one world (the `players.withPlayer` context switch), shared layers, and monsters targeting the nearest hero.
+- 2026-11-18 · 2.5live · **Live mode:** a 250 ms world clock replaces turn-waiting, held keys move continuously, auto-actions run on the clock, solo pause, and the autosave throttle rescaled.
+- 2026-11-18 · 2.5live · Wrote the plan (`docs/plans/live-and-multiplayer.md`) and recorded the decisions on the 5-minute collapse, outdoor "rooms" being 32×32, and Formers being exact copies.
