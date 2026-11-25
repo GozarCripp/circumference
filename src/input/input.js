@@ -203,7 +203,13 @@ export function initInput(canvas) {
     if (key === '+' || key === '=') { e.preventDefault(); zoom(+1); return; }
     if (key === '-' || key === '_') { e.preventDefault(); zoom(-1); return; }
 
-    const dir = KEY_DIRS[key] || KEY_DIRS[e.key];
+    // 3D first-person: A/D (←/→) turn, W/S (↑/↓) walk forward/back, Q/E step diagonally ahead, Z/C sidestep
+    if (renderer.is3d()) {
+      const turnKey = { a: 2, ArrowLeft: 2, d: -2, ArrowRight: -2 }[key];
+      if (turnKey) { e.preventDefault(); renderer.turnBy(e.shiftKey ? turnKey / 2 : turnKey); return; }
+    }
+    const FP = { w: [1, 0], ArrowUp: [1, 0], s: [-1, 0], ArrowDown: [-1, 0], q: [1, -1], e: [1, 1], z: [0, -1], c: [0, 1] };
+    const dir = (renderer.is3d() && FP[key] && renderer.relDir(FP[key][0], FP[key][1])) || KEY_DIRS[key] || KEY_DIRS[e.key];
     const gem = /^[1-4]$/.test(key) ? +key : 0;
     const verb = dir || gem || ('gjbrkm'.includes(key) && key.length === 1);
     if (!verb) return;
