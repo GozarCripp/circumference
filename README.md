@@ -2,7 +2,7 @@
 
 Work-in-progress 2.5D version of the turn-based, procedurally generated planet roguelike. The original ASCII version is included under `classic/` and lives on `main`.
 
-**Play:** https://gozarcripp.github.io/circumference/2.5d/
+**Play (3D):** https://gozarcripp.github.io/circumference/3d/ · **2.5D:** https://gozarcripp.github.io/circumference/2.5d/
 
 ## 3D (first-person) — work in progress
 

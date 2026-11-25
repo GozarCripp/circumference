@@ -1,7 +1,7 @@
 name: pages
 on:
   push:
-    branches: [main, foreverquest-uncircumferenced]
+    branches: [main, foreverquest-uncircumferenced, 3d]
   workflow_dispatch:
 permissions:
   contents: read
@@ -26,6 +26,11 @@ jobs:
           ref: foreverquest-uncircumferenced
           path: dev
         continue-on-error: true
+      - uses: actions/checkout@v4
+        with:
+          ref: 3d
+          path: three
+        continue-on-error: true
       - name: Assemble site
         run: |
           mkdir _site
@@ -33,6 +38,10 @@ jobs:
           if [ -f dev/index.html ]; then
             mkdir _site/2.5d
             rsync -a --exclude='.git' --exclude='.github' --exclude='README.md' dev/ _site/2.5d/
+          fi
+          if [ -f three/index.html ]; then
+            mkdir _site/3d
+            rsync -a --exclude='.git' --exclude='.github' --exclude='README.md' --exclude='docs' three/ _site/3d/
           fi
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
