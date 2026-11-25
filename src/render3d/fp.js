@@ -20,14 +20,22 @@ import * as assets from '../art/assets.js';
 import { ambient } from '../render/lighting.js';
 import { shown } from '../game/monsters.js';
 import { drawFx, shake, flashOf } from '../render/fx.js';
+import { act } from '../game/turn.js';
+import { blocks } from '../world/world.js';
+import { panelOpen } from '../ui/dom.js';
+import { titleVisible } from '../ui/title.js';
 
 // ---- tunables ------------------------------------------------------------------------------------------------------
-const DRAW_R = 22;               // tiles drawn around the hero
-const CAP = 2400;                // instance capacity per terrain key
+const DRAW_R = 32;               // tiles drawn around the hero
+const CAP = 4096;                // instance capacity per terrain key
 const ZG = 0.11;                 // world units per ZU for ground and terraces
 const ZS = 0.24;                 // world units per ZU for solid columns (rocks, pyramid steps)
 const WALL_H = 1.9;              // castle and dungeon walls
 const EYE = 0.62;                // eye height above the ground under the hero
+const BACK = 0.4;                // camera sits this far behind the hero's position (a touch of breathing room)
+const SPEED = 3.2;               // glide speed, tiles per second (one game turn per tile crossed)
+const TURN_RATE = 2.4;           // radians per second while a turn key is held
+const SWING = 260;               // ms between repeated bumps (attacks, chopping) while pushing into a tile
 const PX = 26;                   // art pixels per world unit for billboards
 const YAW_TAU = 70, POS_TAU = TIMING.tween;
 const MEMORY = new THREE.Color(0.34, 0.36, 0.48);   // tint of tiles remembered but not in sight
@@ -40,7 +48,7 @@ const meshes = new Map();        // terrain key -> { mesh, tiles: Int32Array(2 *
 const boxGeo = new THREE.BoxGeometry(1, 1, 1);
 let yaw = 0, yawT = 0, pitch = -0.06, pitchT = -0.06;
 let camX = 0, camY = 0, camZ = 0, snap = true, lastNow = 0, animating = false;
-let builtSig = '', artVer = 0, dpr = 1, fovBase = 72, zoom = 0;
+let builtSig = '', artVer = 0, dpr = 1, fovBase = 80, zoom = 0;
 const stats = { tiles: 0, sprites: 0, ms: 0 };
 const raycaster = new THREE.Raycaster();
 
@@ -65,7 +73,7 @@ export function initFp(canvas2d) {
   ov = canvas2d; octx = ov.getContext('2d');
 
   scene = new THREE.Scene();
-  camera = new THREE.PerspectiveCamera(fovBase, 1, 0.05, 80);
+  camera = new THREE.PerspectiveCamera(fovBase, 1, 0.05, 120);
   camera.rotation.order = 'YXZ';
   hemi = new THREE.HemisphereLight(0xffffff, 0x404050, 0.9);
   sun = new THREE.DirectionalLight(0xffffff, 1.2);
@@ -77,7 +85,6 @@ export function initFp(canvas2d) {
   const reset = () => { snap = true; builtSig = ''; };
   on('newgame', reset); on('loaded', reset); on('floor', reset);
   on('asset', () => { artVer++; builtSig = ''; });
-  on('hurt', e => { if (e && e.by && e.by.x !== undefined) faceToward(e.by.x, e.by.y); });
   resize();
   return true;
 }
@@ -104,14 +111,42 @@ export function snapCamera() { snap = true; }
 export const isAnimating = () => animating;
 export const renderStats = () => stats;
 
-/** Turn by n eighths of a circle (+ = left), snapping to the 45° grid. */
-export function turnBy(n) { yawT = Math.round(yawT / STEP) * STEP + n * STEP; pitchT = -0.06; }
-function faceToward(x, y) {
-  const P = G.P; if (!P) return;
-  const dx = x - P.x, dy = y - P.y; if (!dx && !dy) return;
-  const want = Math.atan2(-dx, -dy);
-  let d = want - yawT; d = Math.atan2(Math.sin(d), Math.cos(d));
-  if (Math.abs(d) > STEP * 1.5) yawT += d;       // only turn for attacks from well off to the side
+// ---- glide movement: held keys move a continuous position; crossing into a new tile is one game step ---------------
+const held = { f: 0, b: 0, l: 0, r: 0, tl: 0, tr: 0 };
+export function hold(k, down) { if (k in held) { held[k] = down ? 1 : 0; animating = true; } }
+export function releaseAll() { for (const k in held) held[k] = 0; }
+let px = 0, py = 0, lastAct = -1e9, phase = 0;
+const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+
+function glide(now, dt) {
+  const P = G.P;
+  if (snap || Math.abs(px - P.x) > 1.6 || Math.abs(py - P.y) > 1.6) { px = P.x; py = P.y; }   // teleports, floors, loads
+  if (G.over || panelOpen() || titleVisible()) releaseAll();
+  const sec = dt / 1000;
+  if (held.tl || held.tr) { yawT += (held.tl - held.tr) * TURN_RATE * sec; yaw = yawT; animating = true; }
+  const mf = held.f - held.b, mr = held.r - held.l;
+  if (!mf && !mr) {                     // settle onto the tile centre (also follows auto-walk and anything that moves the hero)
+    const k = 1 - Math.exp(-dt / 90);
+    px += (P.x - px) * k; py += (P.y - py) * k;
+    if (Math.abs(P.x - px) > 0.002 || Math.abs(P.y - py) > 0.002) animating = true; else { px = P.x; py = P.y; }
+    return false;
+  }
+  animating = true;
+  const len = Math.hypot(mf, mr);
+  let nx = px + (-Math.sin(yawT) * mf + Math.cos(yawT) * mr) / len * SPEED * sec;
+  let ny = py + (-Math.cos(yawT) * mf - Math.sin(yawT) * mr) / len * SPEED * sec;
+  const tx = Math.round(nx), ty = Math.round(ny);
+  if (tx !== P.x || ty !== P.y) {
+    let dx = Math.sign(tx - P.x), dy = Math.sign(ty - P.y);
+    // cutting a corner into a wall: slide along whichever side is open
+    if (dx && dy && blocks(P.x + dx, P.y + dy)) { if (!blocks(P.x + dx, P.y)) dy = 0; else if (!blocks(P.x, P.y + dy)) dx = 0; }
+    if (now - lastAct >= SWING) { lastAct = now; act(dx, dy); }
+    if (P.x !== tx) nx = clamp(nx, P.x - 0.49, P.x + 0.49);   // did not get there (wall, monster, NPC): stay in our tile
+    if (P.y !== ty) ny = clamp(ny, P.y - 0.49, P.y + 0.49);
+  }
+  phase += Math.hypot(nx - px, ny - py);
+  px = nx; py = ny;
+  return true;
 }
 
 /** Grid step for a view-relative move: f = forward (+1) / back (-1), r = right (+1) / left (-1). */
@@ -228,7 +263,7 @@ function buildWorld() {
     const top = Math.max(0, heightAt(x, y)) * ZG;
     const gk = d.kind === 'prop' ? (d.ground === 'auto' ? groundKey(x, y) : d.ground) : d.key;
     place(gk, x, y, -1, top, vis);
-    if (d.kind === 'prop' && !(x === P.x && y === P.y)) props.push({ spr: assets.sprite('prop/' + d.key, hashv(x, y)), x, y, z: top, vis, sc: d.tall ? 1.35 : 0.6 });
+    if (d.kind === 'prop' && !(x === P.x && y === P.y)) props.push({ spr: assets.sprite('prop/' + d.key, hashv(x, y)), x, y, z: top, vis, sc: d.tall ? 1.15 : 0.5 });
   }
   if (!G.dg && P.camp && isSeen(P.camp.x, P.camp.y)) props.push({ spr: assets.sprite('prop/campfire', 0), x: P.camp.x, y: P.camp.y, z: standY(P.camp.x, P.camp.y), vis: isVis(P.camp.x, P.camp.y) });
   for (const m of meshes.values()) {
@@ -293,22 +328,22 @@ function buildSprites(now) {
     const c = key.indexOf(',');
     let ux = +key.slice(0, c), uy = +key.slice(c + 1);
     if (!G.dg) { ux += Math.round((P.x - ux) / WS) * WS; uy += Math.round((P.y - uy) / WS) * WS; }
-    if (Math.abs(ux - P.x) > 20 || Math.abs(uy - P.y) > 20 || !isVis(ux, uy)) return;
-    billboard(assets.sprite(assets.itemSpriteId(it)), ux, uy, standY(ux, uy) + 0.04 * Math.sin(now / 300 + ux), false, { x: ux, y: uy }, 0.8);
+    if (Math.abs(ux - P.x) > 30 || Math.abs(uy - P.y) > 30 || !isVis(ux, uy)) return;
+    billboard(assets.sprite(assets.itemSpriteId(it)), ux, uy, standY(ux, uy) + 0.04 * Math.sin(now / 300 + ux), false, { x: ux, y: uy }, 0.65);
   });
   for (const n of G.npcs || []) {
-    if (Math.abs(n.x - P.x) > 20 || Math.abs(n.y - P.y) > 20) continue;
+    if (Math.abs(n.x - P.x) > 30 || Math.abs(n.y - P.y) > 30) continue;
     const r = track(n, now);
     if (!isVis(n.x, n.y)) continue;
-    const spr = assets.sprite('npc/' + (n.look || n.id)), b = billboard(spr, r.x, r.y, standY(n.x, n.y), false, { x: n.x, y: n.y }, 1.2);
+    const spr = assets.sprite('npc/' + (n.look || n.id)), b = billboard(spr, r.x, r.y, standY(n.x, n.y), false, { x: n.x, y: n.y }, 0.9);
     const f = flashOf(n); if (f > 0) { flashOver(b, spr, f); animating = true; }
   }
   for (const m of G.mons || []) {
-    if (Math.abs(m.x - P.x) > 18 || Math.abs(m.y - P.y) > 18) continue;
+    if (Math.abs(m.x - P.x) > 30 || Math.abs(m.y - P.y) > 30) continue;
     const r = track(m, now);
     if (!shown(m)) continue;
     const z = isDeep(m.x, m.y) ? -0.35 : standY(m.x, m.y);
-    const spr = assets.sprite(assets.monSpriteId(m)), b = billboard(spr, r.x, r.y, z, false, { x: m.x, y: m.y }, m.boss ? 1.6 : 1.2);
+    const spr = assets.sprite(assets.monSpriteId(m)), b = billboard(spr, r.x, r.y, z, false, { x: m.x, y: m.y }, m.boss ? 1.25 : 0.9);
     const f = flashOf(m); if (f > 0) { flashOver(b, spr, f); animating = true; }
   }
   for (let i = spriteN; i < spritePool.length; i++) spritePool[i].visible = false;
@@ -334,7 +369,7 @@ function updateLight() {
     hemi.color.copy(tint); hemi.intensity = 0.35 + 0.6 * L;
     sun.color.copy(tint); sun.intensity = 0.2 + 1.1 * L;
     torch.intensity = L < 0.6 ? 1.2 : 0; torch.distance = 7;
-    scene.fog.near = 4; scene.fog.far = Math.min(DRAW_R, (a.radius || 9) * 2 + 2);
+    scene.fog.near = 6; scene.fog.far = a.phase === 'night' ? (a.radius || 7) * 2 + 4 : DRAW_R - 1;
   }
   scene.fog.color.copy(sky);
   gl.setClearColor(sky);
@@ -359,18 +394,18 @@ function frame(now) {
   if (sig !== builtSig) { buildWorld(); builtSig = sig; }
 
   // camera position: ease toward the hero's tile
-  const hr = track(P, now);
-  const tx = hr.x, ty = hr.y, tz = standY(P.x, P.y) + EYE;
-  if (snap) { camX = tx; camY = ty; camZ = tz; snap = false; }
+  const moving = glide(now, dt);
+  const tz = standY(P.x, P.y) + EYE;
+  if (snap) { camZ = tz; snap = false; }
   else {
-    const k = 1 - Math.exp(-dt / 60);
-    camX = tx; camY = ty; camZ += (tz - camZ) * k;
+    camZ += (tz - camZ) * (1 - Math.exp(-dt / 60));
     if (Math.abs(tz - camZ) > 0.005) animating = true;
   }
+  camX = px + Math.sin(yaw) * BACK; camY = py + Math.cos(yaw) * BACK;
   const ky = 1 - Math.exp(-dt / YAW_TAU);
   yaw += (yawT - yaw) * ky; pitch += (pitchT - pitch) * ky;
   if (Math.abs(yawT - yaw) > 0.002 || Math.abs(pitchT - pitch) > 0.002) animating = true; else { yaw = yawT; pitch = pitchT; }
-  const bob = hr.t0 >= 0 ? Math.sin(Math.min(1, (now - hr.t0) / POS_TAU) * Math.PI) * 0.035 : 0;
+  const bob = moving ? Math.abs(Math.sin(phase * Math.PI)) * 0.03 : 0;
   const sk = shake(), sx = sk ? (sk.x || 0) * 0.004 : 0, sy = sk ? (sk.y || 0) * 0.004 : 0;
   camera.position.set(camX + sx * Math.cos(yaw), camZ + bob + sy, camY - sx * Math.sin(yaw));
   camera.rotation.set(pitch, yaw, 0);

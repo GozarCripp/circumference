@@ -49,7 +49,8 @@ export function tileToClient(x, y) {
 }
 
 // ---- first-person only (no-ops in 2.5D) ----------------------------------------------------------------------------
-/** Turn the view by `steps` eighths of a circle (+ = left). */
-export function turnBy(steps) { if (mode === '3d') fp.turnBy(steps); }
+/** Glide movement: press / release a held movement key ('f','b','l','r' move; 'tl','tr' turn). */
+export function hold(k, down) { if (mode === '3d') fp.hold(k, down); }
+export function releaseAll() { if (mode === '3d') fp.releaseAll(); }
 /** Grid step for a move relative to the view: f = +1 forward / -1 back, r = +1 right / -1 left. */
 export function relDir(f, r) { return mode === '3d' ? fp.relDir(f, r) : null; }
