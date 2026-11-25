@@ -150,8 +150,8 @@ export function formersPhase() {
       if (layerOf(T) === key && cheb(m, T) <= AI_RANGE) {
         if (m.stage < 3) { m.stage = 3; warn(T, pickOf(DREAD.near)); }
         m.eta = null;
-        m.fk = ((m.fk | 0) + 1) % 5;                                   // a fifth slower than a hero: rests 1 tick in 5
-        if (m.fk === 4 && cheb(m, T) > 1) continue;                    // ...but never pauses a fight
+        m.fk = ((m.fk | 0) + 1) % 2;                                   // once it sees you it moves AND fights at half speed
+        if (m.fk === 1) continue;
         withPlayer(T, () => monAct(m));
         continue;
       }

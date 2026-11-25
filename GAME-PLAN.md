@@ -79,7 +79,7 @@ The answer was: **no server, and free.** One player's browser hosts the game, an
 - **Ordinary monsters:** 15% drop gear or a scroll, 1 in 8 drop something small (gold, sometimes a potion), and the rest drop nothing.
 - **Named rares:** always real loot, plus something small.
 - **Biome and pyramid/dungeon bosses:** a guaranteed **Legendary**, plus something small.
-- **Formers** are a fifth slower than heroes (the snail that hunts you), because they carry better loot.
+- **Formers** are slow but relentless, because they carry better loot. Unseen, they travel 25% slower. **Once they see you, they move and fight at half speed.**
 - **Spawn clearing:** a Former on a respawn point gets thrown to the far side of the planet ("Your former experienced diameter.").
 - **The hang-in-there cat is the global loading screen.** Transitions load their destination page behind it.
 
@@ -151,6 +151,7 @@ The folder layout is unchanged: `core/ data/ game/ world/ render/ ui/ input/ aud
 
 Format: `YYYY-MM-DD · branch · what changed (and why)`.
 
+- 2026-11-25 · multiplayer · **Formers act at half speed once they see you.** When in range (same layer, within 24 tiles), they move and attack every other tick. Unseen travel still takes 25% longer than before. This replaces "a fifth slower, full-speed fights".
 - 2026-11-19 · multiplayer · **Loot corrected to the owner's numbers.** Ordinary monsters: 15% real loot (gear or a scroll), 1 in 8 a small drop (gold, sometimes a potion), the rest nothing. Rares: real loot plus something small. **Biome and dungeon bosses always drop a Legendary** (`genGear(lvl, 'legendary')`). Measured: 16% real, 12.8% small, 71% nothing; 5 of 5 boss kills dropped Legendaries.
 - 2026-11-19 · multiplayer · **The cat is the global loading screen.** It shows at boot and on room transitions. Leave room and Join room now load the destination page behind the cat (`net.goTo`, `exitRoom`, `goToRoom`), which also fixes being unable to move after leaving a room.
 - 2026-11-19 · multiplayer · **Formers are a fifth slower:** they rest 1 tick in 5 when not adjacent, and their unseen travel takes 25% longer.
