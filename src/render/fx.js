@@ -463,8 +463,8 @@ export function updateFx(dt) {
 function project(view, p) {
   let z = 0;
   try { z = Math.max(0, heightAt(Math.round(p.tx), Math.round(p.ty)) || 0); } catch (e) { /* ignore */ }
-  const c = view.toScreen(p.tx, p.ty, z);
-  return { x: c.x + p.ox * view.S, y: c.y - p.lift * view.S };
+  const c = view.toScreen(p.tx, p.ty, z), k = c.k || view.S;   // k: art px -> device px at that depth (3D view)
+  return { x: c.x + p.ox * k, y: c.y - p.lift * k };
 }
 
 function drawText(ctx, view, p) {
@@ -474,10 +474,17 @@ function drawText(ctx, view, p) {
   const size = Math.max(10, Math.round(p.size * S * bump));
   ctx.globalAlpha = a;
   ctx.font = `${size}px ${FONT}`;
-  ctx.lineWidth = Math.max(2, Math.round(size / 6));
-  ctx.strokeStyle = PAL.outline; ctx.fillStyle = p.col;
   const x = Math.round(c.x), y = Math.round(c.y);
-  ctx.strokeText(p.txt, x, y); ctx.fillText(p.txt, x, y);
+  // the title logo's treatment: plum drop shadow, fat accent stroke, thin dark inner stroke, gradient fill
+  const acc = p.crit ? UI.line : UI.orange, sh = Math.max(1, Math.round(size * 0.06));
+  ctx.lineWidth = Math.max(3, Math.round(size * 0.3));
+  ctx.strokeStyle = '#2a0a3a'; ctx.strokeText(p.txt, x + sh, y + sh * 1.5);
+  ctx.strokeStyle = acc; ctx.strokeText(p.txt, x, y);
+  ctx.lineWidth = Math.max(2, Math.round(size * 0.13));
+  ctx.strokeStyle = '#2a0a3a'; ctx.strokeText(p.txt, x, y);
+  const g = ctx.createLinearGradient(0, y - size / 2, 0, y + size / 2);
+  g.addColorStop(0, shade(p.col, 0.55)); g.addColorStop(0.55, p.col); g.addColorStop(1, shade(p.col, -0.15));
+  ctx.fillStyle = g; ctx.fillText(p.txt, x, y);
 }
 
 /** Draw effects. layer 'world' | 'overlay'. Restores ctx state. */

@@ -19,6 +19,7 @@ import { terr, isSeen, isVis, heightAt, elevAt, groundKey, isDeep } from '../wor
 import * as assets from '../art/assets.js';
 import { ambient } from '../render/lighting.js';
 import { shown } from '../game/monsters.js';
+import { drawFx, shake, flashOf } from '../render/fx.js';
 
 // ---- tunables ------------------------------------------------------------------------------------------------------
 const DRAW_R = 22;               // tiles drawn around the hero
@@ -33,7 +34,7 @@ const MEMORY = new THREE.Color(0.34, 0.36, 0.48);   // tint of tiles remembered 
 const STEP = Math.PI / 4;
 
 // ---- state ---------------------------------------------------------------------------------------------------------
-let gl = null, scene = null, camera = null, cv3 = null;
+let gl = null, scene = null, camera = null, cv3 = null, ov = null, octx = null, fxS = 3;
 let sun = null, hemi = null, torch = null;
 const meshes = new Map();        // terrain key -> { mesh, tiles: Int32Array(2 * CAP), n }
 const boxGeo = new THREE.BoxGeometry(1, 1, 1);
@@ -61,6 +62,7 @@ export function initFp(canvas2d) {
   try { gl = new THREE.WebGLRenderer({ canvas: cv3, antialias: false, powerPreference: 'high-performance' }); }
   catch (e) { cv3.remove(); return false; }
   canvas2d.style.background = 'transparent';
+  ov = canvas2d; octx = ov.getContext('2d');
 
   scene = new THREE.Scene();
   camera = new THREE.PerspectiveCamera(fovBase, 1, 0.05, 80);
@@ -86,6 +88,8 @@ export function resize() {
   dpr = Math.min(2, window.devicePixelRatio || 1);
   gl.setPixelRatio(dpr * 0.75);               // a little under native: chunky, fast, matches the pixel art
   gl.setSize(w, h, false);
+  if (ov) { ov.width = Math.round(w * dpr); ov.height = Math.round(h * dpr); }
+  fxS = dpr * Math.max(3, Math.min(5, Math.min(w, h) / 160));   // device px per art px for effect text
   camera.aspect = w / h;
   camera.fov = fovBase - zoom * 6;
   camera.updateProjectionMatrix();
@@ -251,7 +255,19 @@ function billboard(spr, x, y, z, dim, tag, scale = 1) {
   s.position.set(x, z, y);
   e.mat.color.copy(dim ? MEMORY : COL.setRGB(1, 1, 1));
   s.userData.tile = tag;
+  s.renderOrder = 0;
   return s;
+}
+/** A hit flash: the same billboard again, additively, so the creature blinks white like the 2.5D sprites. */
+function flashOver(base, spr, f) {
+  const e = matFor(spr);
+  if (!e.flash) e.flash = new THREE.SpriteMaterial({ map: e.tex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, fog: false });
+  let s = spritePool[spriteN];
+  if (!s) { s = spritePool[spriteN] = new THREE.Sprite(); scene.add(s); }
+  spriteN++;
+  s.material = e.flash; e.flash.opacity = Math.min(1, f * 1.2);
+  s.visible = true; s.center.copy(base.center); s.scale.copy(base.scale); s.position.copy(base.position);
+  s.userData.tile = base.userData.tile; s.renderOrder = 1;
 }
 
 function track(e, now) {
@@ -284,14 +300,16 @@ function buildSprites(now) {
     if (Math.abs(n.x - P.x) > 20 || Math.abs(n.y - P.y) > 20) continue;
     const r = track(n, now);
     if (!isVis(n.x, n.y)) continue;
-    billboard(assets.sprite('npc/' + (n.look || n.id)), r.x, r.y, standY(n.x, n.y), false, { x: n.x, y: n.y }, 1.2);
+    const spr = assets.sprite('npc/' + (n.look || n.id)), b = billboard(spr, r.x, r.y, standY(n.x, n.y), false, { x: n.x, y: n.y }, 1.2);
+    const f = flashOf(n); if (f > 0) { flashOver(b, spr, f); animating = true; }
   }
   for (const m of G.mons || []) {
     if (Math.abs(m.x - P.x) > 18 || Math.abs(m.y - P.y) > 18) continue;
     const r = track(m, now);
     if (!shown(m)) continue;
     const z = isDeep(m.x, m.y) ? -0.35 : standY(m.x, m.y);
-    billboard(assets.sprite(assets.monSpriteId(m)), r.x, r.y, z, false, { x: m.x, y: m.y }, m.boss ? 1.6 : 1.2);
+    const spr = assets.sprite(assets.monSpriteId(m)), b = billboard(spr, r.x, r.y, z, false, { x: m.x, y: m.y }, m.boss ? 1.6 : 1.2);
+    const f = flashOf(m); if (f > 0) { flashOver(b, spr, f); animating = true; }
   }
   for (let i = spriteN; i < spritePool.length; i++) spritePool[i].visible = false;
   stats.sprites = spriteN;
@@ -353,7 +371,8 @@ function frame(now) {
   yaw += (yawT - yaw) * ky; pitch += (pitchT - pitch) * ky;
   if (Math.abs(yawT - yaw) > 0.002 || Math.abs(pitchT - pitch) > 0.002) animating = true; else { yaw = yawT; pitch = pitchT; }
   const bob = hr.t0 >= 0 ? Math.sin(Math.min(1, (now - hr.t0) / POS_TAU) * Math.PI) * 0.035 : 0;
-  camera.position.set(camX, camZ + bob, camY);
+  const sk = shake(), sx = sk ? (sk.x || 0) * 0.004 : 0, sy = sk ? (sk.y || 0) * 0.004 : 0;
+  camera.position.set(camX + sx * Math.cos(yaw), camZ + bob + sy, camY - sx * Math.sin(yaw));
   camera.rotation.set(pitch, yaw, 0);
   torch.position.copy(camera.position);
 
@@ -363,6 +382,33 @@ function frame(now) {
   for (const m of meshes.values()) if (m.liquid && m.mesh.material.map) m.mesh.material.map.offset.set((now / 4000) % 1, (now / 6000) % 1);
 
   gl.render(scene, camera);
+  drawEffects();
+}
+
+// ---- effects (render/fx.js) on the transparent overlay canvas, projected through the 3D camera ----------------------
+const FXV = new THREE.Vector3();
+const fxView = { S: 3, ox: 0, oy: 0, w: 1, h: 1, dpr: 1, toScreen: null };
+fxView.toScreen = (x, y) => {
+  // the hero's own tile is under the camera: their numbers rise from the lower middle of the screen
+  if (Math.round(x) === G.P.x && Math.round(y) === G.P.y) return { x: ov.width / 2, y: ov.height * 0.86, k: fxS * 0.9 };
+  FXV.set(x, standY(Math.round(x), Math.round(y)), y);
+  const dist = FXV.distanceTo(camera.position);
+  FXV.project(camera);
+  if (FXV.z > 1 || FXV.z < -1) return { x: -1e5, y: -1e5, k: 1 };
+  // art px -> device px at this depth: billboards use PX art px per world unit
+  const ppu = ov.height / (2 * Math.tan(camera.fov * Math.PI / 360) * Math.max(0.3, dist));
+  // 0.6: the 2.5D lifts clear an isometric head; billboards are drawn shorter per art px. Capped so a monster in your
+  // face does not throw its numbers off the top of the screen.
+  const k = Math.min(fxS * 2.2, ppu / PX * 0.6);
+  return { x: (FXV.x + 1) / 2 * ov.width, y: Math.max(ov.height * 0.12 + 52 * k, (1 - FXV.y) / 2 * ov.height), k };
+};
+function drawEffects() {
+  if (!octx) return;
+  octx.setTransform(1, 0, 0, 1, 0, 0);
+  octx.clearRect(0, 0, ov.width, ov.height);
+  fxView.S = fxS; fxView.w = ov.width; fxView.h = ov.height; fxView.dpr = dpr;
+  drawFx(octx, fxView, 'world');
+  drawFx(octx, fxView, 'overlay');
 }
 
 // =================================================================================================================
