@@ -1,7 +1,7 @@
 name: pages
 on:
   push:
-    branches: [main, foreverquest-uncircumferenced, 3d]
+    branches: [main, foreverquest-uncircumferenced, multiplayer, 3d]
   workflow_dispatch:
 permissions:
   contents: read
@@ -31,6 +31,11 @@ jobs:
           ref: 3d
           path: three
         continue-on-error: true
+      - uses: actions/checkout@v4
+        with:
+          ref: multiplayer
+          path: mp
+        continue-on-error: true
       - name: Assemble site
         run: |
           mkdir _site
@@ -43,9 +48,16 @@ jobs:
             mkdir _site/3d
             rsync -a --exclude='.git' --exclude='.github' --exclude='README.md' --exclude='docs' three/ _site/3d/
           fi
+          if [ -f mp/index.html ]; then
+            mkdir _site/mp
+            rsync -a --exclude='.git' --exclude='.github' --exclude='README.md' --exclude='docs' mp/ _site/mp/
+          fi
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
+          name: github-pages-${{ github.run_attempt }}   # re-runs keep earlier attempts' uploads; keep names unique
       - id: deployment
         uses: actions/deploy-pages@v4
+        with:
+          artifact_name: github-pages-${{ github.run_attempt }}
