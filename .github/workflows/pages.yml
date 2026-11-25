@@ -5,7 +5,6 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
-  actions: read      # deploy-pages lists this run's artifacts; without it it finds 0
   pages: write
   id-token: write
 concurrency:
@@ -45,10 +44,11 @@ jobs:
             rsync -a --exclude='.git' --exclude='.github' --exclude='README.md' --exclude='docs' three/ _site/3d/
           fi
       - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v4
         with:
           path: _site
           name: github-pages-${{ github.run_attempt }}   # re-runs keep earlier attempts' uploads; keep names unique
+      - run: sleep 30   # shortcut: deploy-pages found 0 artifacts right after upload (listing lags); drop if it stops lagging
       - id: deployment
         uses: actions/deploy-pages@v4
         with:
