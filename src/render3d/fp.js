@@ -26,12 +26,17 @@ import { panelOpen } from '../ui/dom.js';
 import { titleVisible } from '../ui/title.js';
 
 // ---- tunables ------------------------------------------------------------------------------------------------------
-const DRAW_R = 32;               // tiles drawn around the hero
-const CAP = 4096;                // instance capacity per terrain key
+const DRAW_R = 44;               // tiles drawn around the hero
+const CAP = 8192;                // instance capacity per terrain key
 const ZG = 0.11;                 // world units per ZU for ground and terraces
 const ZS = 0.24;                 // world units per ZU for solid columns (rocks, pyramid steps)
 const WALL_H = 1.9;              // castle and dungeon walls
 const EYE = 0.62;                // eye height above the ground under the hero
+// The planet: a WS x WS torus drawn as a sphere of the same circumference (768 tiles -> radius ~122.2). Ground at
+// distance d sinks R - sqrt(R^2 - d^2) below the hero's horizon (~0.33 at 9 tiles, ~6.6 at 40), so the land curves away.
+const PLANET_R = WS / (2 * Math.PI);
+const curve = (dx, dy) => { const d2 = dx * dx + dy * dy; return PLANET_R - Math.sqrt(Math.max(0, PLANET_R * PLANET_R - d2)); };
+const PROP_FAR = 30, LOW_PROP_FAR = 16;   // billboards cost a draw call each: trees to 30 tiles, ferns/reeds to 16
 const BACK = 0.4;                // camera sits this far behind the hero's position (a touch of breathing room)
 const SPEED = 3.2;               // glide speed, tiles per second (one game turn per tile crossed)
 const TURN_RATE = 2.4;           // radians per second while a turn key is held
@@ -221,8 +226,8 @@ const M4 = new THREE.Matrix4(), V3 = new THREE.Vector3(), Q = new THREE.Quaterni
 function place(key, x, y, bottom, top, vis) {
   const m = meshFor(key);
   if (m.n >= CAP) return;
-  const h = Math.max(0.02, top - bottom);
-  M4.compose(V3.set(x, bottom + h / 2, y), Q, SC.set(1, h, 1));
+  const h = Math.max(0.02, top - bottom), sink = G.dg ? 0 : curve(x - G.P.x, y - G.P.y);
+  M4.compose(V3.set(x, bottom + h / 2 - sink, y), Q, SC.set(1, h, 1));
   m.mesh.setMatrixAt(m.n, M4);
   m.mesh.setColorAt(m.n, vis ? COL.setRGB(1, 1, 1) : MEMORY);
   m.tiles[2 * m.n] = x; m.tiles[2 * m.n + 1] = y;
@@ -231,7 +236,7 @@ function place(key, x, y, bottom, top, vis) {
 
 /** Surface height (world units) a creature stands on at tile (x, y). */
 function standY(x, y) {
-  if (!isSeen(x, y)) return 0;
+  if (G.dg && !isSeen(x, y)) return 0;
   const d = terr(x, y);
   if (d.kind === 'liquid') return -0.12;
   if (d.kind === 'solid') return solidTop(d, x, y);
@@ -250,7 +255,9 @@ function buildWorld() {
   let tiles = 0;
   for (let y = P.y - DRAW_R; y <= P.y + DRAW_R; y++) for (let x = P.x - DRAW_R; x <= P.x + DRAW_R; x++) {
     const ddx = x - P.x, ddy = y - P.y;
-    if (ddx * ddx + ddy * ddy > DRAW_R * DRAW_R || !isSeen(x, y)) continue;
+    const dd = ddx * ddx + ddy * ddy;
+    // overworld: the land itself is drawn to the horizon (unexplored = hazy); dungeons stay explored-only
+    if (dd > DRAW_R * DRAW_R || (G.dg && !isSeen(x, y))) continue;
     const d = terr(x, y);
     if (d.kind === 'none') continue;
     const vis = isVis(x, y);
@@ -263,7 +270,7 @@ function buildWorld() {
     const top = Math.max(0, heightAt(x, y)) * ZG;
     const gk = d.kind === 'prop' ? (d.ground === 'auto' ? groundKey(x, y) : d.ground) : d.key;
     place(gk, x, y, -1, top, vis);
-    if (d.kind === 'prop' && !(x === P.x && y === P.y)) props.push({ spr: assets.sprite('prop/' + d.key, hashv(x, y)), x, y, z: top, vis, sc: d.tall ? 1.15 : 0.5 });
+    if (d.kind === 'prop' && !(x === P.x && y === P.y) && dd <= (d.tall ? PROP_FAR * PROP_FAR : LOW_PROP_FAR * LOW_PROP_FAR)) props.push({ spr: assets.sprite('prop/' + d.key, hashv(x, y)), x, y, z: top, vis, sc: d.tall ? 1.15 : 0.5 });
   }
   if (!G.dg && P.camp && isSeen(P.camp.x, P.camp.y)) props.push({ spr: assets.sprite('prop/campfire', 0), x: P.camp.x, y: P.camp.y, z: standY(P.camp.x, P.camp.y), vis: isVis(P.camp.x, P.camp.y) });
   for (const m of meshes.values()) {
@@ -287,8 +294,8 @@ function billboard(spr, x, y, z, dim, tag, scale = 1) {
   s.visible = true;
   s.center.set(spr.ax / spr.w, 1 - spr.ay / spr.h);
   s.scale.set(spr.w / PX * scale, spr.h / PX * scale, 1);
-  s.position.set(x, z, y);
-  e.mat.color.copy(dim ? MEMORY : COL.setRGB(1, 1, 1));
+  s.position.set(x, z - (G.dg ? 0 : curve(x - G.P.x, y - G.P.y)), y);
+  e.mat.color.copy(lit); if (dim) e.mat.color.multiply(MEMORY);
   s.userData.tile = tag;
   s.renderOrder = 0;
   return s;
@@ -354,7 +361,7 @@ function buildSprites(now) {
 //  light, sky, fog
 // =================================================================================================================
 const SKY_DAY = new THREE.Color(0x8fb6e6), SKY_NIGHT = new THREE.Color(0x0d0a26), TOMB = new THREE.Color(0x0a0710);
-const tint = new THREE.Color(), sky = new THREE.Color();
+const tint = new THREE.Color(), sky = new THREE.Color(), lit = new THREE.Color(1, 1, 1);   // lit: billboards are unlit, so they take the light by colour
 function updateLight() {
   const a = ambient();
   if (G.dg) {
@@ -371,8 +378,91 @@ function updateLight() {
     torch.intensity = L < 0.6 ? 1.2 : 0; torch.distance = 7;
     scene.fog.near = 6; scene.fog.far = a.phase === 'night' ? (a.radius || 7) * 2 + 4 : DRAW_R - 1;
   }
+  if (G.dg) lit.setRGB(0.75, 0.62, 0.5); else lit.copy(tint).multiplyScalar(0.3 + 0.7 * (a.light ?? 1));
   scene.fog.color.copy(sky);
   gl.setClearColor(sky);
+}
+
+// =================================================================================================================
+//  sky: sun + moon on the game clock, a fixed north star. Directions are true to the map: north = -y (three -z),
+//  east = +x. The sun rises due east at dawn (t 0.25), peaks a little to the south at noon, sets due west at dusk
+//  (t 0.78); the moon runs the same arc half a day later. Drawn far out, past the land, so hills can hide them.
+// =================================================================================================================
+const SKY_D = 100;
+const sky3 = { sun: null, moon: null, star: null, clouds: [] };
+function skyTex(draw, n = 16) {
+  const c = document.createElement('canvas'); c.width = c.height = n;
+  draw(c.getContext('2d'), n);
+  const t = new THREE.CanvasTexture(c);
+  t.magFilter = THREE.NearestFilter; t.minFilter = THREE.NearestFilter; t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+function disc(g, n, r, col) { for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if ((x - n / 2 + .5) ** 2 + (y - n / 2 + .5) ** 2 <= r * r) { g.fillStyle = col; g.fillRect(x, y, 1, 1); } }
+function skySprite(tex, size) {
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, fog: false, transparent: true, depthWrite: false }));
+  s.scale.set(size, size, 1); s.renderOrder = -1; scene.add(s); return s;
+}
+function initSky() {
+  sky3.sun = skySprite(skyTex((g, n) => {                // title-screen sun: yellow disc, orange bands
+    disc(g, n, 7.5, '#ffd23f'); g.fillStyle = '#f5874a';
+    for (const y of [9, 11, 13]) for (let x = 0; x < n; x++) { const d = g.getImageData(x, y, 1, 1).data; if (d[3]) g.fillRect(x, y, 1, 1); }
+  }), 14);
+  sky3.moon = skySprite(skyTex((g, n) => {
+    disc(g, n, 6.5, '#e9e4ff'); g.fillStyle = '#b8b0d8';
+    for (const [x, y] of [[5, 6], [6, 6], [9, 9], [10, 9], [9, 10], [7, 11]]) g.fillRect(x, y, 1, 1);
+  }), 9);
+  sky3.star = skySprite(skyTex((g) => {                  // four-point sparkle
+    g.fillStyle = '#ffffff'; g.fillRect(3, 0, 1, 7); g.fillRect(0, 3, 7, 1);
+    g.fillStyle = '#8fd3ff'; g.fillRect(2, 2, 3, 3); g.fillStyle = '#ffffff'; g.fillRect(3, 3, 1, 1);
+  }, 7), 3.2);
+  // clouds in the title screen's style: white puffs over a baby-blue underside, pixel-crisp
+  const puffs = [[[6, 8, 4], [12, 6, 6], [19, 7, 5], [25, 9, 3]], [[5, 8, 3], [10, 7, 5], [16, 5, 6], [22, 7, 5], [27, 9, 3]], [[8, 8, 4], [14, 6, 5], [20, 8, 4]]];
+  const texs = puffs.map(set => {
+    const c = document.createElement('canvas'); c.width = 32; c.height = 14;
+    const g = c.getContext('2d');
+    const blob = (col, dy, dr) => { g.fillStyle = col; for (const [x, y, r] of set) for (let py = 0; py < 14; py++) for (let px = 0; px < 32; px++) if ((px - x) ** 2 + (py - y - dy) ** 2 <= (r + dr) ** 2) g.fillRect(px, py, 1, 1); };
+    blob('#9fd8ff', 1.5, 0); blob('#ffffff', 0, -0.5);
+    const t = new THREE.CanvasTexture(c); t.magFilter = t.minFilter = THREE.NearestFilter; t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  });
+  let a = 0x51ced;
+  const rnd = () => { a = (Math.imul(a, 1664525) + 1013904223) >>> 0; return a / 4294967296; };
+  for (let i = 0; i < 18; i++) {
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: texs[i % 3], fog: false, transparent: true, depthWrite: false, alphaTest: 0.5 }));
+    const w = 14 + rnd() * 12;
+    s.scale.set(w, w * 14 / 32, 1); s.renderOrder = -1; scene.add(s);
+    sky3.clouds.push({ s, az: rnd() * Math.PI * 2, el: 0.1 + rnd() * 0.32, drift: 0.004 + rnd() * 0.006 });
+  }
+}
+const SKV = new THREE.Vector3();
+function placeSky(s, x, y, z) { SKV.set(x, y, z).normalize().multiplyScalar(SKY_D); s.position.copy(camera.position).add(SKV); }
+function updateSky() {
+  if (!sky3.sun) initSky();
+  const out = !G.dg;
+  sky3.sun.visible = sky3.moon.visible = sky3.star.visible = out;
+  for (const c of sky3.clouds) c.s.visible = out;
+  if (!out) return;
+  const a = ambient(), t = a.t ?? 0.5;
+  const arc = (k) => { const th = k * Math.PI; return [Math.cos(th), Math.sin(th), 0.35 * Math.sin(th)]; };   // x east->west, up, south lean
+  const ks = (t - 0.25) / 0.53;                         // 0 at sunrise, 1 at sunset
+  const km = ((t + 0.5) % 1 - 0.25) / 0.53;             // the moon, half a day out of step
+  const [sx, sy, sz] = arc(ks), [mx, my, mz] = arc(km);
+  placeSky(sky3.sun, sx, sy, sz); sky3.sun.visible = sy > -0.15;
+  stats.sky = { t: +t.toFixed(3), sun: [sx, sy, sz].map(v => +v.toFixed(2)), yaw: +yaw.toFixed(2) };   // for tests
+  placeSky(sky3.moon, mx, my, mz); sky3.moon.visible = my > -0.15;
+  placeSky(sky3.star, 0, 0.42, -1);                     // due north, fixed
+  const L = a.light ?? 1;
+  sky3.star.material.opacity = Math.max(0.18, 1 - (L - 0.42) / 0.45);   // bright at night, a faint glint by day
+  sky3.moon.material.opacity = Math.max(0.35, 1 - (L - 0.42) / 0.7);
+  // clouds drift west on the wind (moved whenever a frame is drawn; no extra frames just for them) and take the
+  // light's tint: white by day, peach at dawn/dusk, dim indigo at night
+  const sec = performance.now() / 1000;
+  COL.setRGB(a.tint[0] / 255, a.tint[1] / 255, a.tint[2] / 255).multiplyScalar(0.35 + 0.65 * L);
+  for (const c of sky3.clouds) {
+    const az = c.az + sec * c.drift;
+    placeSky(c.s, -Math.cos(az), c.el, Math.sin(az));
+    c.s.material.color.copy(COL);
+  }
 }
 
 // =================================================================================================================
@@ -412,6 +502,7 @@ function frame(now) {
   torch.position.copy(camera.position);
 
   updateLight();
+  updateSky();
   buildSprites(now);
   // gentle liquid shimmer
   for (const m of meshes.values()) if (m.liquid && m.mesh.material.map) m.mesh.material.map.offset.set((now / 4000) % 1, (now / 6000) % 1);
