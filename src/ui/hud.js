@@ -18,6 +18,8 @@ import { openGear } from './gear.js';
 import { openJournal, openMenu, openBestiary } from './panels.js';
 import { $, el, css, tap } from './dom.js';
 import { titleVisible } from './title.js';
+import { shown } from '../game/monsters.js';
+import { con } from '../game/combat.js';
 
 // ---- constants -----------------------------------------------------------------------------------------------
 const MAP_R = 23;                    // minimap radius in tiles: (2R+1)^2 = 2209 fills <= 2300
@@ -472,6 +474,7 @@ function drawMap() {
   const px = P.x, py = P.y, S = MAP_PX;
   ctx.fillStyle = '#0a0716'; ctx.fillRect(0, 0, MAP_N * S, MAP_N * S);
   const pyr = !!G.dg;
+  const marks = [];                                   // dungeon entrances / stairs seen on the map, drawn on top
   for (let j = 0; j < MAP_N; j++) {
     const y = py - MAP_R + j;
     for (let i = 0; i < MAP_N; i++) {
@@ -480,6 +483,7 @@ function drawMap() {
       if (!seen) continue;
       const k = world.terrKey(x, y);
       if (k === 'void') continue;
+      if (k === 'pdoor' || k === 'up' || k === 'down' || k.startsWith('ddoor')) marks.push(i, j, k);
       const c = colorOf(k);
       // dim what is remembered but not in sight, so the lit pocket around the hero stands out
       const lit = world.isVis(x, y);
@@ -498,6 +502,33 @@ function drawMap() {
       ctx.fillStyle = '#fff'; ctx.fillRect(cx, cy, S, S);
     }
   }
+  // ground items in sight: small gold glints
+  if (G.items && G.items.size) G.items.forEach((it, key) => {
+    const c = key.indexOf(','); let ix = +key.slice(0, c), iy = +key.slice(c + 1);
+    if (!pyr) { ix += Math.round((px - ix) / WS) * WS; iy += Math.round((py - iy) / WS) * WS; }
+    const dx = ix - px, dy = iy - py;
+    if (Math.abs(dx) > MAP_R || Math.abs(dy) > MAP_R || !world.isVis(ix, iy)) return;
+    ctx.fillStyle = '#ffd23f'; ctx.fillRect((dx + MAP_R) * S + 1, (dy + MAP_R) * S + 1, 1, 1);
+  });
+  // dungeon entrances, pyramid doors and stairs: big framed markers you can steer by
+  for (let q = 0; q < marks.length; q += 3) {
+    const cx = marks[q] * S + 1, cy = marks[q + 1] * S + 1, k = marks[q + 2];
+    const col = k === 'down' ? '#ffd23f' : k === 'up' ? '#8fd3ff' : (TERRAIN[k] && TERRAIN[k].color) || '#ffe27a';
+    ctx.fillStyle = '#120826'; ctx.fillRect(cx - 5, cy - 5, 11, 11);
+    ctx.fillStyle = '#ff2fa0'; ctx.fillRect(cx - 4, cy - 4, 9, 9);
+    ctx.fillStyle = col; ctx.fillRect(cx - 3, cy - 3, 7, 7);
+    ctx.fillStyle = '#120826'; ctx.fillRect(cx - 1, cy - 1, 3, 4);   // the doorway
+  }
+  // monsters in sight, in their threat colour
+  for (const m of G.mons || []) {
+    const dx = m.x - px, dy = m.y - py;
+    if (Math.abs(dx) > MAP_R || Math.abs(dy) > MAP_R) continue;
+    let ok = false; try { ok = shown(m); } catch (e) { /* ignore */ }
+    if (!ok) continue;
+    let col = '#ff5d6c'; try { col = con(m).color || col; } catch (e) { /* ignore */ }
+    ctx.fillStyle = '#120826'; ctx.fillRect((dx + MAP_R) * S - 1, (dy + MAP_R) * S - 1, S + 2, S + 2);
+    ctx.fillStyle = col; ctx.fillRect((dx + MAP_R) * S, (dy + MAP_R) * S, S, S);
+  }
   // NPCs
   for (const n of G.npcs || []) {
     const dx = n.x - px, dy = n.y - py;
@@ -509,5 +540,12 @@ function drawMap() {
   const hc = MAP_R * S;
   ctx.fillStyle = '#120826'; ctx.fillRect(hc - 2, hc - 2, S + 4, S + 4);
   ctx.fillStyle = '#ffd23f'; ctx.fillRect(hc - 1, hc - 1, S + 2, S + 2);
+  // north is up
+  if (!pyr && document.documentElement.classList.contains('view3d')) {   // 2.5D turns the map 45°, so only 3D gets the N
+    const nx = MAP_R * S - 2, ny = 1;
+    ctx.fillStyle = '#120826'; ctx.fillRect(nx - 1, ny - 1, 7, 8);
+    ctx.fillStyle = '#ffd23f';                         // a 5x6 pixel "N"
+    for (const [a, b] of [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4], [0, 5], [4, 0], [4, 1], [4, 2], [4, 3], [4, 4], [4, 5], [1, 1], [2, 2], [2, 3], [3, 4]]) ctx.fillRect(nx + a, ny + b, 1, 1);
+  }
   setText(ui.mapNote, 'mapN', pyr ? `F${G.dg.i + 1}` : '');
 }

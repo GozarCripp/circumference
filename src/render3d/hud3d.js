@@ -18,6 +18,7 @@ const STYLE = `
   background:radial-gradient(circle,#2d145888 0 55%,#1b0f3baa 56%);border:3px solid #ff2fa0aa;box-shadow:0 0 0 2px #120826}
 .h3-stick b{position:absolute;left:50%;top:50%;width:54px;height:54px;margin:-27px 0 0 -27px;border-radius:50%;
   background:radial-gradient(circle at 40% 35%,#ffd23f,#ff7a1a);border:3px solid #2a0a3a;pointer-events:none}
+html.view3d #hud .hd-map canvas{transform:none}   /* 3D: the minimap is north-up, not turned to the isometric view */
 html:not(.view3d) .h3-cross,html:not(.view3d) .h3-tag,html:not(.view3d) .h3-stick,html:not(.view3d) .h3-arrow{display:none}
 `;
 

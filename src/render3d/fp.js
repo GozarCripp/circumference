@@ -218,18 +218,23 @@ function terrainTexture(def) {
   return t;
 }
 
+// materials that are not terrain: the dark of a doorway, and the light beams over entrances (additive, tinted per instance)
+const EXTRA = { doorway: { key: 'doorway', color: '#0b0614', kind: 'ground' } };
 function meshFor(key) {
   let m = meshes.get(key);
   if (m) return m;
-  const def = TERRAIN[key] || { key, color: '#888', kind: 'ground' };
-  const liquid = def.kind === 'liquid';
-  const mat = new THREE.MeshLambertMaterial({ map: terrainTexture(def), transparent: liquid, opacity: liquid ? 0.82 : 1 });
+  const def = TERRAIN[key] || EXTRA[key] || { key, color: '#888', kind: 'ground' };
+  const liquid = def.kind === 'liquid', beam = key === 'beam';
+  const mat = beam ? new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.38, blending: THREE.AdditiveBlending, depthWrite: false, fog: false })
+    : key === 'doorway' ? new THREE.MeshBasicMaterial({ color: 0x0b0614 })
+    : new THREE.MeshLambertMaterial({ map: terrainTexture(def), transparent: liquid, opacity: liquid ? 0.82 : 1 });
   const mesh = new THREE.InstancedMesh(boxGeo, mat, CAP);
   mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   mesh.setColorAt(0, new THREE.Color(1, 1, 1));
   mesh.frustumCulled = false;
   mesh.userData.key = key;
   scene.add(mesh);
+  if (beam) mesh.renderOrder = 2;
   m = { mesh, tiles: new Int32Array(2 * CAP), n: 0, liquid };
   meshes.set(key, m);
   return m;
@@ -262,6 +267,58 @@ function place(key, x, y, bottom, top, vis) {
   m.mesh.setColorAt(m.n, vis ? COL.setRGB(1, 1, 1) : MEMORY);
   m.tiles[2 * m.n] = x; m.tiles[2 * m.n + 1] = y;
   m.n++;
+}
+
+/** A box of any size centred at (cx, cy) on the map, from z0 up by h; picks as tile (x, y). col tints it (beams). */
+function box(key, x, y, cx, cy, z0, w, h, d, vis, col) {
+  const m = meshFor(key);
+  if (m.n >= CAP) return;
+  const sink = G.dg ? 0 : curve(cx - G.P.x, cy - G.P.y);
+  M4.compose(V3.set(cx, z0 + h / 2 - sink, cy), Q, SC.set(w, h, d));
+  m.mesh.setMatrixAt(m.n, M4);
+  m.mesh.setColorAt(m.n, col || (vis ? COL.setRGB(1, 1, 1) : MEMORY));
+  m.tiles[2 * m.n] = x; m.tiles[2 * m.n + 1] = y;
+  m.n++;
+}
+
+// Dungeon entrances as places you walk into, not icons: each biome's dungeon gets a small building in its own wall
+// material, doorway facing south (+y), and a tall light beam in the entrance colour so it can be found from afar.
+// Parts: [material, dx, dy, z0, w, h, d] relative to the entrance tile centre and its ground height.
+const ENTRANCES = {
+  ddoor0: [['jwall', 0, -0.25, 0, 2.0, 0.45, 1.5], ['jwall', 0, -0.3, 0.45, 1.5, 0.5, 1.2], ['jwall', 0, -0.35, 0.95, 1.0, 0.45, 0.9],   // overgrown temple
+    ['jwall', -0.6, 0.35, 0, 0.22, 1.25, 0.22], ['jwall', 0.6, 0.35, 0, 0.22, 1.25, 0.22], ['tree', -0.55, -0.4, 0.95, 0.5, 0.35, 0.6], ['tree', 0.5, -0.2, 0.45, 0.45, 0.3, 0.5]],
+  ddoor1: [['swall', 0, -0.2, 0.15, 1.3, 1.0, 1.2], ['reed', 0, -0.2, 1.15, 1.6, 0.22, 1.5], ['reed', 0, -0.2, 1.37, 1.1, 0.2, 1.1],     // swamp shack on stilts
+    ['dtree', -0.55, 0.3, 0, 0.12, 0.2, 0.12], ['dtree', 0.55, 0.3, 0, 0.12, 0.2, 0.12]],
+  ddoor2: [['cwall', -0.65, -0.1, 0, 0.5, 2.3, 0.7], ['cwall', 0.65, -0.1, 0, 0.5, 2.3, 0.7], ['cwall', 0, -0.1, 1.4, 1.8, 0.5, 0.7],   // ruined gatehouse
+    ['cwall', -0.75, -0.1, 2.3, 0.18, 0.25, 0.7], ['cwall', 0.55, -0.1, 2.3, 0.18, 0.25, 0.7], ['cwall', 0, -0.1, 1.9, 0.25, 0.25, 0.7]],
+  ddoor3: [['mwall', 0, -0.35, 0, 2.0, 1.1, 1.4], ['mwall', -0.2, -0.45, 1.1, 1.4, 0.6, 1.0], ['mwall', 0.3, -0.5, 1.7, 0.7, 0.35, 0.6],   // cave mouth in a rock mound
+    ['mwall', -0.9, 0.2, 0, 0.5, 0.55, 0.5], ['mwall', 0.95, 0.15, 0, 0.4, 0.4, 0.45]],
+  ddoor4: [['pwall', 0, -0.25, 0, 1.9, 0.6, 1.5], ['pwall', 0, -0.3, 0.6, 1.4, 0.55, 1.1], ['pwall', 0, -0.35, 1.15, 0.8, 0.5, 0.7],     // sandstone shrine
+    ['pwall', -0.55, 0.35, 0, 0.2, 1.0, 0.2], ['pwall', 0.55, 0.35, 0, 0.2, 1.0, 0.2], ['pwall', 0, 0.35, 1.0, 1.3, 0.18, 0.2]],
+};
+const DOORWAY = { ddoor0: [0.55, 0.85, 0.51], ddoor1: [0.45, 0.75, 0.41], ddoor2: [0.8, 1.35, -0.1], ddoor3: [0.7, 0.8, 0.36], ddoor4: [0.55, 0.9, 0.51] };   // width, height, front face (dy)
+const BEAM_COL = new THREE.Color();
+function entrance(d, x, y, top, vis) {
+  for (const [k, dx, dy, z0, w, h, dd] of ENTRANCES[d.key]) box(k, x, y, x + dx, y + dy, top + z0, w, h, dd, vis);
+  const [dw, dh, front] = DOORWAY[d.key];
+  box('doorway', x, y, x, y + front, top + (d.key === 'ddoor1' ? 0.15 : 0), dw, dh, 0.06, vis);
+  beam(x, y, top, d.color, 9);
+}
+function beam(x, y, top, color, h) {
+  BEAM_COL.set(color || '#ffe27a');
+  box('beam', x, y, x, y, top, 0.22, h, 0.22, true, BEAM_COL);
+  box('beam', x, y, x, y, top, 0.5, h * 0.35, 0.5, true, BEAM_COL);
+}
+// inside dungeons: the way out up is a stone arch in a shaft of light; the way down a dark pit with a glow
+function stairs(d, x, y, top, vis) {
+  if (d.key === 'up') {
+    const k = 'pwall';
+    box(k, x, y, x - 0.42, y, top, 0.16, 1.4, 0.3, vis); box(k, x, y, x + 0.42, y, top, 0.16, 1.4, 0.3, vis); box(k, x, y, x, y, top + 1.4, 1.0, 0.2, 0.3, vis);
+    beam(x, y, top, '#fff3b0', 6);
+  } else {
+    box('doorway', x, y, x, y, top - 0.02, 0.8, 0.05, 0.8, vis);
+    beam(x, y, top - 0.5, '#ffd23f', 1.6);
+  }
 }
 
 /** Surface height (world units) a creature stands on at tile (x, y). */
@@ -300,6 +357,8 @@ function buildWorld() {
     const top = Math.max(0, heightAt(x, y)) * ZG;
     const gk = d.kind === 'prop' ? (d.ground === 'auto' ? groundKey(x, y) : d.ground) : d.key;
     place(gk, x, y, -1, top, vis);
+    if (d.dd) { entrance(d, x, y, top, vis); continue; }
+    if (d.key === 'up' || d.key === 'down') stairs(d, x, y, top, vis);
     if (d.kind === 'prop' && !(x === P.x && y === P.y) && dd <= (d.tall ? PROP_FAR * PROP_FAR : LOW_PROP_FAR * LOW_PROP_FAR)) props.push({ spr: assets.sprite('prop/' + d.key, hashv(x, y)), x, y, z: top, vis, sc: d.tall ? 1.15 : 0.5 });
   }
   if (!G.dg && P.camp && isSeen(P.camp.x, P.camp.y)) props.push({ spr: assets.sprite('prop/campfire', 0), x: P.camp.x, y: P.camp.y, z: standY(P.camp.x, P.camp.y), vis: isVis(P.camp.x, P.camp.y) });
