@@ -24,6 +24,7 @@ import { act } from '../game/turn.js';
 import { blocks } from '../world/world.js';
 import { panelOpen } from '../ui/dom.js';
 import { titleVisible } from '../ui/title.js';
+import { initCombat3d, drawCombat, combatActive } from './combat3d.js';
 
 // ---- tunables ------------------------------------------------------------------------------------------------------
 const DRAW_R = 44;               // tiles drawn around the hero
@@ -56,6 +57,12 @@ let camX = 0, camY = 0, camZ = 0, snap = true, lastNow = 0, animating = false;
 let builtSig = '', artVer = 0, dpr = 1, fovBase = 80, zoom = 0;
 const stats = { tiles: 0, sprites: 0, ms: 0 };
 const raycaster = new THREE.Raycaster();
+
+// combat reactions (see initFp): knockback / lunge per monster, death ghosts, hit-stop, crit camera kick
+const react = new WeakMap();     // monster -> { k: 'knock' | 'lunge', t0 }
+const ghosts = [];               // dying monsters: { spr, x, y, z, sc, t0, s }
+let stopUntil = 0, simShift = 0, kickT0 = -1e9;
+const GHOST_MS = 380;
 
 // billboard pool + caches
 const spritePool = [];
@@ -90,6 +97,24 @@ export function initFp(canvas2d) {
   const reset = () => { snap = true; builtSig = ''; };
   on('newgame', reset); on('loaded', reset); on('floor', reset);
   on('asset', () => { artVer++; builtSig = ''; });
+  // ---- combat reactions on billboards (renderer-only; the game resolves everything instantly) ----
+  initCombat3d();
+  const t = () => performance.now();
+  on('hit', e => {
+    if (!e || !e.mon) return;
+    react.set(e.mon, { k: 'knock', t0: t() });
+    if (e.crit) { kickT0 = t(); stopUntil = t() + 60; }
+  });
+  on('hurt', e => {
+    const m = e && e.by;
+    if (m && m.hp !== undefined && Number.isFinite(m.x) && e.kind !== 'poison') react.set(m, { k: 'lunge', t0: t() });
+  });
+  on('kill', e => {
+    const m = e && e.mon; if (!m || !Number.isFinite(m.x)) return;
+    const r = disp.get(m);
+    ghosts.push({ spr: assets.sprite(assets.monSpriteId(m)), x: r ? r.x : m.x, y: r ? r.y : m.y, z: standY(m.x, m.y), sc: m.boss ? 1.25 : 0.9, t0: t(), s: null });
+    stopUntil = t() + 60;
+  });
   resize();
   return true;
 }
@@ -351,9 +376,39 @@ function buildSprites(now) {
     if (!shown(m)) continue;
     const z = isDeep(m.x, m.y) ? -0.35 : standY(m.x, m.y);
     const spr = assets.sprite(assets.monSpriteId(m)), b = billboard(spr, r.x, r.y, z, false, { x: m.x, y: m.y }, m.boss ? 1.25 : 0.9);
+    const rc = react.get(m);
+    if (rc) {                                   // knockback away from us when hit; lunge at us when it hits
+      const k = (performance.now() - rc.t0) / (rc.k === 'knock' ? 140 : 170);
+      if (k >= 1 || k < 0) react.delete(m);
+      else {
+        const e = Math.sin(k * Math.PI), dx = r.x - px, dy = r.y - py, L = Math.hypot(dx, dy) || 1;
+        const amt = rc.k === 'knock' ? 0.15 : -0.35;
+        b.position.x += dx / L * amt * e; b.position.z += dy / L * amt * e;
+        b.scale.x *= 1 + 0.15 * e; b.scale.y *= rc.k === 'knock' ? 1 - 0.15 * e : 1 + 0.15 * e;   // squash / grow
+        animating = true;
+      }
+    }
     const f = flashOf(m); if (f > 0) { flashOver(b, spr, f); animating = true; }
   }
   for (let i = spriteN; i < spritePool.length; i++) spritePool[i].visible = false;
+  // dying monsters tip over from the feet, sink and fade (own material: rotation/opacity are per sprite)
+  const rn = performance.now();
+  for (let i = ghosts.length - 1; i >= 0; i--) {
+    const g = ghosts[i], k = (rn - g.t0) / GHOST_MS;
+    if (k >= 1) { if (g.s) { scene.remove(g.s); g.s.material.dispose(); } ghosts.splice(i, 1); continue; }
+    if (!g.s) {
+      const sp = g.spr;
+      g.s = new THREE.Sprite(matFor(sp).mat.clone());
+      g.s.material.transparent = true; g.s.material.alphaTest = 0.05;
+      g.s.center.set(sp.ax / sp.w, 1 - sp.ay / sp.h); g.s.scale.set(sp.w / PX * g.sc, sp.h / PX * g.sc, 1);
+      scene.add(g.s);
+    }
+    g.s.material.rotation = (g.x >= px ? -1 : 1) * 1.45 * Math.min(1, k * 1.6);
+    g.s.material.opacity = 1 - k * k;
+    g.s.material.color.copy(lit);
+    g.s.position.set(g.x, g.z - curve(g.x - P.x, g.y - P.y) - 0.3 * k, g.y);
+    animating = true;
+  }
   stats.sprites = spriteN;
 }
 
@@ -498,12 +553,16 @@ function frame(now) {
   const bob = moving ? Math.abs(Math.sin(phase * Math.PI)) * 0.03 : 0;
   const sk = shake(), sx = sk ? (sk.x || 0) * 0.004 : 0, sy = sk ? (sk.y || 0) * 0.004 : 0;
   camera.position.set(camX + sx * Math.cos(yaw), camZ + bob + sy, camY - sx * Math.sin(yaw));
-  camera.rotation.set(pitch, yaw, 0);
+  const kick = Math.max(0, 1 - (performance.now() - kickT0) / 160);
+  camera.rotation.set(pitch + 0.05 * kick * kick, yaw, 0);
+  if (kick > 0) animating = true;
   torch.position.copy(camera.position);
 
   updateLight();
   updateSky();
-  buildSprites(now);
+  if (performance.now() < stopUntil) { simShift += dt; animating = true; }   // hit-stop: creature tweens hold still
+  buildSprites(now - simShift);
+  if (combatActive()) animating = true;
   // gentle liquid shimmer
   for (const m of meshes.values()) if (m.liquid && m.mesh.material.map) m.mesh.material.map.offset.set((now / 4000) % 1, (now / 6000) % 1);
 
@@ -534,6 +593,8 @@ function drawEffects() {
   octx.clearRect(0, 0, ov.width, ov.height);
   fxView.S = fxS; fxView.w = ov.width; fxView.h = ov.height; fxView.dpr = dpr;
   drawFx(octx, fxView, 'world');
+  const a = ambient();
+  drawCombat(octx, ov.width, ov.height, yaw, phase, G.dg ? 0.75 : (a.light ?? 1));
   drawFx(octx, fxView, 'overlay');
 }
 
