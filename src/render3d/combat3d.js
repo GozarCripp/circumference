@@ -106,7 +106,7 @@ export function drawCombat(ctx, w, h, yaw, sway, light) {
   // ---- viewmodel -----------------------------------------------------------------------------------------------
   if (!G.over) {
     const img = viewmodel(), size = Math.round(Math.min(w, h) * 0.5);
-    let px = w - size * 0.95, py = h - size * 0.97, rot = 0, sc = 1;   // fist sits right of centre, above the button bar
+    let px = w - size * 0.95, py = h - size * 0.97 - (h > w * 1.2 ? h * 0.14 : 0), rot = 0, sc = 1;   // portrait phones: clear the log   // fist sits right of centre, above the button bar
     px += Math.sin(sway * Math.PI) * size * 0.03; py += Math.abs(Math.cos(sway * Math.PI)) * size * 0.03;   // walk sway
     const k = (t - swingT0) / (swingKind === 'spell' ? CAST_MS : SWING_MS);
     if (k >= 0 && k < 1) {

@@ -25,6 +25,8 @@ import { blocks } from '../world/world.js';
 import { panelOpen } from '../ui/dom.js';
 import { titleVisible } from '../ui/title.js';
 import { initCombat3d, drawCombat, combatActive } from './combat3d.js';
+import { initHud3d, updateHud3d } from './hud3d.js';
+import { con } from '../game/combat.js';
 
 // ---- tunables ------------------------------------------------------------------------------------------------------
 const DRAW_R = 44;               // tiles drawn around the hero
@@ -99,6 +101,7 @@ export function initFp(canvas2d) {
   on('asset', () => { artVer++; builtSig = ''; });
   // ---- combat reactions on billboards (renderer-only; the game resolves everything instantly) ----
   initCombat3d();
+  initHud3d({ setStick });
   const t = () => performance.now();
   on('hit', e => {
     if (!e || !e.mon) return;
@@ -144,8 +147,10 @@ export const renderStats = () => stats;
 // ---- glide movement: held keys move a continuous position; crossing into a new tile is one game step ---------------
 const held = { f: 0, b: 0, l: 0, r: 0, tl: 0, tr: 0 };
 export function hold(k, down) { if (k in held) { held[k] = down ? 1 : 0; animating = true; } }
-export function releaseAll() { for (const k in held) held[k] = 0; }
+export function releaseAll() { for (const k in held) held[k] = 0; stickF = stickR = 0; }
 let px = 0, py = 0, lastAct = -1e9, phase = 0;
+let stickF = 0, stickR = 0;      // phone thumb stick, analog -1..1
+export function setStick(r, f) { stickR = r; stickF = f; animating = true; }
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 
 function glide(now, dt) {
@@ -154,7 +159,7 @@ function glide(now, dt) {
   if (G.over || panelOpen() || titleVisible()) releaseAll();
   const sec = dt / 1000;
   if (held.tl || held.tr) { yawT += (held.tl - held.tr) * TURN_RATE * sec; yaw = yawT; animating = true; }
-  const mf = held.f - held.b, mr = held.r - held.l;
+  const mf = held.f - held.b + stickF, mr = held.r - held.l + stickR;
   if (!mf && !mr) {                     // settle onto the tile centre (also follows auto-walk and anything that moves the hero)
     const k = 1 - Math.exp(-dt / 90);
     px += (P.x - px) * k; py += (P.y - py) * k;
@@ -162,7 +167,7 @@ function glide(now, dt) {
     return false;
   }
   animating = true;
-  const len = Math.hypot(mf, mr);
+  const len = Math.max(1, Math.hypot(mf, mr));   // keys: unit speed; a half-pushed stick walks slower
   let nx = px + (-Math.sin(yawT) * mf + Math.cos(yawT) * mr) / len * SPEED * sec;
   let ny = py + (-Math.cos(yawT) * mf - Math.sin(yawT) * mr) / len * SPEED * sec;
   const tx = Math.round(nx), ty = Math.round(ny);
@@ -563,6 +568,7 @@ function frame(now) {
   if (performance.now() < stopUntil) { simShift += dt; animating = true; }   // hit-stop: creature tweens hold still
   buildSprites(now - simShift);
   if (combatActive()) animating = true;
+  updateHud3d(yaw, performance.now(), centerTile);
   // gentle liquid shimmer
   for (const m of meshes.values()) if (m.liquid && m.mesh.material.map) m.mesh.material.map.offset.set((now / 4000) % 1, (now / 6000) % 1);
 
@@ -593,9 +599,50 @@ function drawEffects() {
   octx.clearRect(0, 0, ov.width, ov.height);
   fxView.S = fxS; fxView.w = ov.width; fxView.h = ov.height; fxView.dpr = dpr;
   drawFx(octx, fxView, 'world');
+  drawMonsterBars();
   const a = ambient();
   drawCombat(octx, ov.width, ov.height, yaw, phase, G.dg ? 0.75 : (a.light ?? 1));
   drawFx(octx, fxView, 'overlay');
+}
+
+// threat rings at the feet + HP bars over the head (as the 2.5D view draws them), for monsters within 10 tiles
+const BV = new THREE.Vector3();
+function proj(x, y, z) {
+  BV.set(x, z, y);
+  const dist = BV.distanceTo(camera.position);
+  BV.project(camera);
+  if (BV.z > 1 || BV.z < -1) return null;
+  return { x: (BV.x + 1) / 2 * ov.width, y: (1 - BV.y) / 2 * ov.height, ppu: ov.height / (2 * Math.tan(camera.fov * Math.PI / 360) * Math.max(0.3, dist)), dist };
+}
+function drawMonsterBars() {
+  const P = G.P;
+  for (const m of G.mons || []) {
+    if (Math.abs(m.x - P.x) > 10 || Math.abs(m.y - P.y) > 10 || !shown(m)) continue;
+    const r = disp.get(m), x = r ? r.x : m.x, y = r ? r.y : m.y;
+    const z0 = (isDeep(m.x, m.y) ? -0.35 : standY(m.x, m.y)) - curve(x - P.x, y - P.y);
+    const feet = proj(x, y, z0); if (!feet) continue;
+    let col = '#fff'; try { col = con(m).color || '#fff'; } catch (e) { /* ignore */ }
+    const rx = 0.42 * feet.ppu * (m.boss ? 1.4 : 1), ry = rx * Math.max(0.12, Math.min(0.5, EYE / feet.dist));
+    octx.lineWidth = Math.max(2, rx * 0.08);
+    octx.strokeStyle = '#2a0a3a'; octx.beginPath(); octx.ellipse(feet.x, feet.y, rx + 1.5, ry + 1.5, 0, 0, Math.PI * 2); octx.stroke();
+    octx.strokeStyle = col; octx.beginPath(); octx.ellipse(feet.x, feet.y, rx, ry, 0, 0, Math.PI * 2); octx.stroke();
+    if (m.hp < m.max) {
+      const spr = assets.sprite(assets.monSpriteId(m)), hgt = spr.ay / PX * (m.boss ? 1.25 : 0.9);
+      const head = proj(x, y, z0 + hgt + 0.12); if (!head) continue;
+      const bw = Math.max(26, 0.8 * head.ppu * (m.boss ? 1.5 : 1)), bh = Math.max(4, bw * 0.12), f = Math.max(0, m.hp / m.max);
+      const bx = Math.round(head.x - bw / 2), by = Math.round(head.y - bh);
+      octx.fillStyle = '#1a1023'; octx.fillRect(bx - 2, by - 2, bw + 4, bh + 4);
+      octx.fillStyle = f > .5 ? '#7dff8a' : f > .25 ? '#ffd23f' : '#ff5d6c';
+      octx.fillRect(bx, by, Math.max(2, Math.round(bw * f)), bh);
+    }
+  }
+}
+
+/** The tile under the crosshair (screen centre), or null. */
+export function centerTile() {
+  if (!cv3) return null;
+  const r = cv3.getBoundingClientRect();
+  return pickTile(r.left + r.width / 2, r.top + r.height / 2);
 }
 
 // =================================================================================================================

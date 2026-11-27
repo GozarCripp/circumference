@@ -207,6 +207,12 @@ export function initInput(canvas) {
     if (key === '-' || key === '_') { e.preventDefault(); zoom(-1); return; }
 
     // 3D: movement keys are held, not repeated — W/S ↑/↓ glide forward/back, A/D ←/→ turn, Q/E strafe
+    if (renderer.is3d() && (key === 'f' || key === 'Enter')) {         // inspect / talk to whatever is under the crosshair
+      e.preventDefault();
+      const t = renderer.centerTile();
+      if (t) popup.openPop(t.x, t.y, innerWidth / 2, innerHeight / 2);
+      return;
+    }
     if (renderer.is3d() && HOLD3D[key]) {
       e.preventDefault();
       if (!e.repeat) { turn.stopAuto(); popup.closePop(); renderer.hold(HOLD3D[key], true); }
