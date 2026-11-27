@@ -290,7 +290,7 @@ const GRIP = '#6b4a3a', GRIP_D = '#4a3226', BRASS = '#c8a24a';
 
 /** A drawing pen on an axis: origin (ox,oy), pointing up-forward by angle a (0 = straight up, + = leaning right), scale k.
  *  t runs along the shaft (+ toward the tip), s across it (+ to the right). Units are hero pixels (k = 1). */
-function makePen(g, ox, oy, a, k, W, H) {
+function makePen(g, ox, oy, a, k, W, H, wk = 1) {   // wk: stroke-width scale (viewmodel draws at k = wk = 2: same shape, finer pixels)
   const sn = Math.sin(a), cs = Math.cos(a);
   const at = (t, s) => [ox + sn * t * k + cs * s * k, oy - cs * t * k + sn * s * k];
   const dot = (t, s, col) => { if (!col) return; const [x, y] = at(t, s); put(g, x, y, col, W, H); };
@@ -300,7 +300,7 @@ function makePen(g, ox, oy, a, k, W, H) {
   };
   /** A strip of cross-section colours `cols` (light to dark, left to right), optionally bending forward by `bend` units. */
   const seg = (t0, t1, cols, bend = 0, off = 0) => {
-    const nw = k >= 0.95 ? cols.length : Math.max(1, Math.round(cols.length * Math.max(k, 0.5)));
+    const nw = k >= 0.95 ? Math.round(cols.length * wk) : Math.max(1, Math.round(cols.length * Math.max(k, 0.5)));
     const pick = i => nw === cols.length ? cols[i] : nw === 1 ? cols[Math.floor(cols.length / 2)] : cols[Math.round(i * (cols.length - 1) / (nw - 1))];
     const st = 0.3 / Math.max(k, 0.4), len = Math.max(1e-6, t1 - t0);
     for (let t = t0; t <= t1 + 1e-6; t += st) {
@@ -622,32 +622,43 @@ export const ITEM_NAMES = WEP_SLUGS.map(w => 'wep-' + w).concat(MAT_SLUGS.flatMa
 //   gripped by a right hand whose fingers wrap round the handle (pommel showing below the fist), forearm running off the
 //   bottom-right. Same pen and palette as the in-hand / icon art. Canvas VM.w x VM.h; the grip sits at (VM.gx, VM.gy).
 // ============================================================================================================================
-export const VM = { w: 48, h: 64, gx: 31, gy: 50 };
+export const VM = { w: 96, h: 128, gx: 62, gy: 100, k: 2 };   // drawn at 2x (finer pixels than the 1x item art)
 const VSKIN = '#e8b796', VSKIN_H = '#f6d2b8', VSKIN_D = '#c48e6e', VSKIN_DD = '#9b6a50';
 export function makeViewmodel(slugName) {
   const { c, g } = canvas(VM.w, VM.h);
   const spec = slugName && WEAPONS[slugName];
   const a = -0.34;                                     // lean: tip up and to the left, toward the crosshair
-  const p = makePen(g, VM.gx, VM.gy, a, 1, VM.w, VM.h);
+  const p = makePen(g, VM.gx, VM.gy, a, VM.k, VM.w, VM.h, VM.k);
   if (spec) spec.draw(p);
-  // forearm: continues the grip axis down and out of frame
-  p.fill(-26, -3.2, -3.4, 3.4, (t, s) => s > 2.5 ? VSKIN_D : s < -2.6 ? VSKIN_H : (t < -12 && s > 1.4) ? VSKIN_D : VSKIN);
-  // the fist closes round the grip: four finger bands across the handle, knuckles on the left, thumb over the top
+  // forearm: continues the grip axis down and out of frame, a little narrower than the fist
+  p.fill(-26, -3.0, -3.0, 3.0, (t, s) => s > 2.2 ? VSKIN_D : s < -2.3 ? VSKIN_H : (t < -12 && s > 1.2) ? VSKIN_D : VSKIN);
+  // the fist: four fingers wrapped across the handle, each with a rounded knuckle on the left, dark creases between
   const unarmed = !spec;
-  const f0 = unarmed ? -4.4 : -3.4, f1 = unarmed ? 1.8 : 1.0, sw = unarmed ? 4.4 : 3.8;
-  p.fill(f0, f1, -sw, sw - 0.6, (t, s) => {
-    const r = (t - f0) / (f1 - f0) * 4;                // 0..4 = little finger .. index finger
-    if (s < -sw + 0.9) return VSKIN_H;                 // knuckle ridge (lit)
-    if (s > sw - 1.4) return VSKIN_D;                  // palm side in shadow
-    if (r % 1 < 0.22 && r > 0.3) return VSKIN_DD;      // creases between fingers
-    return VSKIN;
+  const f0 = unarmed ? -4.6 : -3.6, f1 = unarmed ? 2.0 : 1.2, sw = unarmed ? 4.2 : 3.6, fw = (f1 - f0) / 4;
+  for (let i = 0; i < 4; i++) {
+    const t0 = f0 + i * fw, t1 = t0 + fw;
+    p.fill(t0, t1, -sw - 0.9, sw - 0.4, (t, s) => {
+      const u = (t - t0) / fw, knuckle = -sw - 0.8 * Math.sin(Math.PI * u);   // rounded left edge per finger
+      if (s < knuckle) return null;
+      if (u > 0.86) return VSKIN_DD;                   // crease to the next finger
+      if (s < knuckle + 0.9) return u < 0.5 ? VSKIN_H : VSKIN;   // lit knuckle top
+      if (s > sw - 1.3) return VSKIN_D;                // palm side in shadow
+      return VSKIN;
+    });
+  }
+  // thumb: over the index finger, pointing up the handle, its own outline line underneath
+  p.fill(f1 - 0.2, f1 + 1.6, -0.8, sw - 0.1, (t, s) => {
+    const tipR = (t - (f1 + 0.9)) / 0.7;               // round the tip
+    if (tipR > 0 && Math.hypot(tipR, (s - (sw * 0.5 - 0.4)) / (sw * 0.6)) > 1.05) return null;
+    if (t < f1 + 0.15) return VSKIN_DD;
+    if (s > sw - 0.9) return VSKIN_D;
+    return t > f1 + 0.9 ? VSKIN_H : VSKIN;
   });
-  // thumb: wrapped over the index finger, pointing up the handle
-  p.fill(f1 - 1.2, f1 + 0.8, -0.6, sw - 0.2, (t, s) => (s > sw - 1.1 ? VSKIN_D : t > f1 + 0.3 ? VSKIN_H : VSKIN));
   // hand-held weapons without a pen (claws, fist weapons): their icon rides on the knuckles
   if (!spec && slugName && HAND_ICONS[slugName]) {
     const ic = canvas(16, 16); drawWeaponIcon(ic.g, slugName);
-    g.drawImage(ic.c, VM.gx - 15, VM.gy - 14);
+    g.imageSmoothingEnabled = false;
+    g.drawImage(ic.c, VM.gx - 30, VM.gy - 28, 32, 32);
   }
   outline(c);
   return c;

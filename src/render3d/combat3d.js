@@ -83,7 +83,7 @@ export function drawCombat(ctx, w, h, yaw, sway, light) {
   if (!G.over) {
     const img = viewmodel();
     // the weapon at real size; the fist low and right of centre, forearm off the bottom edge (portrait: clear of the log)
-    const port = h > w * 1.2, sc0 = Math.min(h / 40, w / (port ? 24 : 30));   // ~40 art px per screen height: a sword reaches mid-screen
+    const port = h > w * 1.2, sc0 = Math.min(h / 40, w / (port ? 24 : 30)) / VM.k;   // ~40 art px per screen height: a sword reaches mid-screen
     let gx = w * (port ? 0.7 : 0.72), gy = h * (port ? 0.74 : 0.8), rot = 0, sc = 1;   // fist above the button bar
     gx += Math.sin(sway * Math.PI) * w * 0.012; gy += Math.abs(Math.cos(sway * Math.PI)) * h * 0.012;   // walk sway
     const k = (t - swingT0) / (swingKind === 'spell' ? CAST_MS : SWING_MS);
