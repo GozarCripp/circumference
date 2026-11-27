@@ -6,10 +6,10 @@
 // whether to keep drawing frames.
 import { G } from '../core/state.js';
 import { on } from '../core/bus.js';
-import * as assets from '../art/assets.js';
+import { makeViewmodel, VM } from '../art/hero.js';
+import { slug } from '../core/util.js';
 
 const SWING_MS = 180, CAST_MS = 280, WEDGE_MS = 900, VIG_MS = 500, LOW_HP = 0.25;
-const SKIN = '#e8b48a', SKIN_D = '#c48f68', OUT = '#1a1023';
 const clock = () => performance.now();
 
 let swingT0 = -1e9, swingKind = 'melee', vigT0 = -1e9;
@@ -35,36 +35,12 @@ export function combatActive() {
   return t - swingT0 < CAST_MS || t - vigT0 < VIG_MS || wedges.some(w => t - w.t0 < WEDGE_MS) || lowHp();
 }
 
-/** 32x32 viewmodel: forearm from the bottom-right corner, a fist, and the weapon icon mirrored so its handle sits in
- *  the fist and the blade points up-left (the item art lies handle bottom-left, tip top-right). */
+/** The viewmodel canvas for the current weapon (art/hero.js makeViewmodel: full-size weapon, hand round the grip). */
 function viewmodel() {
-  const wep = G.P.wep, key = wep && !wep.fists ? assets.gearIconId(wep) : 'fists';
+  const wep = G.P.wep, key = wep && !wep.fists ? slug(wep.type || '') : '';
   if (key === vmKey && vm) return vm;
-  vmKey = key;
-  const c = document.createElement('canvas'); c.width = c.height = 32;
-  const g = c.getContext('2d');
-  // forearm: a thick diagonal from (31,31) up-left to the wrist at (21,21), outlined
-  for (let i = 0; i <= 12; i++) {
-    const x = 31 - i, y = 31 - i;
-    g.fillStyle = OUT; g.fillRect(x - 4, y - 3, 9, 7);
-  }
-  for (let i = 0; i <= 12; i++) {
-    const x = 31 - i, y = 31 - i;
-    g.fillStyle = SKIN; g.fillRect(x - 3, y - 2, 7, 5);
-    g.fillStyle = SKIN_D; g.fillRect(x - 3, y + 2, 7, 1);
-  }
-  // weapon behind the fingers
-  if (key !== 'fists') {
-    const spr = assets.sprite(key);
-    if (spr && spr.img) { g.save(); g.translate(26, 2); g.scale(-1, 1); g.drawImage(spr.img, 0, 0, spr.w, spr.h, 0, 0, 16, 16); g.restore(); }
-  }
-  // fist
-  g.fillStyle = OUT; g.fillRect(14, 13, 10, 10);
-  g.fillStyle = SKIN; g.fillRect(15, 14, 8, 8);
-  g.fillStyle = SKIN_D; for (const y of [16, 18, 20]) g.fillRect(15, y, 5, 1);   // knuckle lines
-  g.fillStyle = '#f6cfa6'; g.fillRect(16, 14, 6, 1);
-  vm = c;
-  return c;
+  vmKey = key; vm = makeViewmodel(key || null);
+  return vm;
 }
 
 const ease = k => (k <= 0 || k >= 1 ? 0 : Math.sin(k * Math.PI));
@@ -105,24 +81,26 @@ export function drawCombat(ctx, w, h, yaw, sway, light) {
 
   // ---- viewmodel -----------------------------------------------------------------------------------------------
   if (!G.over) {
-    const img = viewmodel(), size = Math.round(Math.min(w, h) * 0.5);
-    let px = w - size * 0.95, py = h - size * 0.97 - (h > w * 1.2 ? h * 0.14 : 0), rot = 0, sc = 1;   // portrait phones: clear the log   // fist sits right of centre, above the button bar
-    px += Math.sin(sway * Math.PI) * size * 0.03; py += Math.abs(Math.cos(sway * Math.PI)) * size * 0.03;   // walk sway
+    const img = viewmodel();
+    // the weapon at real size; the fist low and right of centre, forearm off the bottom edge (portrait: clear of the log)
+    const port = h > w * 1.2, sc0 = Math.min(h / 40, w / (port ? 24 : 30));   // ~40 art px per screen height: a sword reaches mid-screen
+    let gx = w * (port ? 0.7 : 0.72), gy = h * (port ? 0.74 : 0.8), rot = 0, sc = 1;   // fist above the button bar
+    gx += Math.sin(sway * Math.PI) * w * 0.012; gy += Math.abs(Math.cos(sway * Math.PI)) * h * 0.012;   // walk sway
     const k = (t - swingT0) / (swingKind === 'spell' ? CAST_MS : SWING_MS);
     if (k >= 0 && k < 1) {
       const e = ease(k);
-      if (swingKind === 'melee') { rot = -1.15 * e; px -= size * 0.28 * e; py -= size * 0.12 * e; }   // arc across toward the centre
-      else if (swingKind === 'ranged') { px += size * 0.08 * e; py += size * 0.1 * e; }               // recoil
-      else { sc = 1 + 0.18 * e; px -= size * 0.12 * e; py -= size * 0.18 * e; }                     // spell thrust
+      if (swingKind === 'melee') { rot = -0.95 * e; gx -= w * 0.1 * e; gy -= h * 0.04 * e; }   // chop across toward the crosshair
+      else if (swingKind === 'ranged') { gx += w * 0.03 * e; gy += h * 0.04 * e; }             // recoil
+      else { sc = 1 + 0.12 * e; gy -= h * 0.06 * e; }                                         // spell thrust
     }
-    ctx.translate(px + size * 0.8, py + size * 0.95);                // pivot near the elbow (bottom-right)
-    ctx.rotate(rot); ctx.scale(sc, sc);
+    ctx.translate(gx, gy);                                        // pivot on the grip
+    ctx.rotate(rot); ctx.scale(sc * sc0, sc * sc0);
     ctx.filter = light < 0.98 ? `brightness(${(0.35 + 0.65 * light).toFixed(2)})` : 'none';
-    ctx.drawImage(img, -size * 0.8, -size * 0.95, size, size);
+    ctx.drawImage(img, -VM.gx, -VM.gy);
     ctx.filter = 'none';
     if (swingKind === 'spell' && k >= 0 && k < 1) {                 // a magic glow on the cast
       ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.6 * ease(k);
-      ctx.drawImage(img, -size * 0.8, -size * 0.95, size, size);
+      ctx.drawImage(img, -VM.gx, -VM.gy);
     }
   }
   ctx.restore();
