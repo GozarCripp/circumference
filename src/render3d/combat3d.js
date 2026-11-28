@@ -9,17 +9,20 @@ import { on } from '../core/bus.js';
 import { makeViewmodel, VM } from '../art/hero.js';
 import { slug } from '../core/util.js';
 
-const SWING_MS = 180, CAST_MS = 280, WEDGE_MS = 900, VIG_MS = 500, LOW_HP = 0.25;
+const SWING_MS = 240, CAST_MS = 280, WEDGE_MS = 900, VIG_MS = 500, LOW_HP = 0.25;
 const clock = () => performance.now();
 
 let swingT0 = -1e9, swingKind = 'melee', vigT0 = -1e9;
+// stabbing weapons and fists drive the point / knuckles straight at the crosshair; everything else chops edge-first
+const THRUST = /^(|dagger|straight-sword|thrusting-sword|spear|twinblade|fist-weapons|claws)$/;
 const wedges = [];                                  // { x, y, t0 } attacker tiles
 let vm = null, vmKey = '';                          // cached viewmodel canvas for the current weapon
 
 export function initCombat3d() {
   const swing = kind => { swingT0 = clock(); swingKind = kind; };
-  on('hit', e => { if (e && (e.kind === 'melee' || e.kind === 'ranged')) swing(e.kind); });
-  on('work', () => swing('melee'));                 // chopping / mining swings too
+  const melee = () => { const w = G.P && G.P.wep; return THRUST.test(w && !w.fists ? slug(w.type || '') : '') ? 'thrust' : 'chop'; };
+  on('hit', e => { if (e && e.kind === 'melee') swing(melee()); else if (e && e.kind === 'ranged') swing('ranged'); });
+  on('work', () => swing('chop'));                  // felling trees / mining: always a chop
   on('spell', () => swing('spell'));
   on('hurt', e => {
     vigT0 = clock();
@@ -89,7 +92,16 @@ export function drawCombat(ctx, w, h, yaw, sway, light) {
     const k = (t - swingT0) / (swingKind === 'spell' ? CAST_MS : SWING_MS);
     if (k >= 0 && k < 1) {
       const e = ease(k);
-      if (swingKind === 'melee') { rot = -0.95 * e; gx -= w * 0.1 * e; gy -= h * 0.04 * e; }   // chop across toward the crosshair
+      if (swingKind === 'chop') {
+        // wind up (tip back to the right), then strike down-left through the crosshair, edge leading
+        const up = k < 0.3 ? Math.sin(k / 0.3 * Math.PI / 2) : Math.max(0, 1 - (k - 0.3) / 0.2);
+        const hit = k < 0.3 ? 0 : Math.sin((k - 0.3) / 0.7 * Math.PI);
+        rot = 0.4 * up - 0.6 * hit; gx += (w / 2 - gx) * 0.35 * hit; gy -= h * (0.06 * hit + 0.04 * up); sc = 1 - 0.1 * hit;   // the head lands on the crosshair
+      } else if (swingKind === 'thrust') {
+        // point the tip at the crosshair and drive it in: forward (up-left, smaller = further away) and back
+        const aim = Math.atan2(w / 2 - gx, gy - h / 2) + 0.34;   // the art leans 0.34 rad left at rest
+        rot = aim * Math.min(1, e * 1.6); gx += (w / 2 - gx) * 0.45 * e; gy += (h / 2 - gy) * 0.5 * e; sc = 1 - 0.22 * e;
+      }
       else if (swingKind === 'ranged') { gx += w * 0.03 * e; gy += h * 0.04 * e; }             // recoil
       else { sc = 1 + 0.12 * e; gy -= h * 0.06 * e; }                                         // spell thrust
     }

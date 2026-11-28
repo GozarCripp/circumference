@@ -629,7 +629,11 @@ export function makeViewmodel(slugName) {
   const spec = slugName && WEAPONS[slugName];
   const a = -0.34;                                     // lean: tip up and to the left, toward the crosshair
   const p = makePen(g, VM.gx, VM.gy, a, VM.k, VM.w, VM.h, VM.k);
-  if (spec) spec.draw(p);
+  // mirrored across the shaft so edges, axe bits and hooks face LEFT, toward the crosshair: the swing leads with them
+  const m = { ...p, dot: (t, s, col) => p.dot(t, -s, col), at: (t, s) => p.at(t, -s), fill: (t0, t1, s0, s1, fn) => p.fill(t0, t1, -s1, -s0, (t, s) => fn(t, -s)),
+    seg: (t0, t1, cols, bend = 0, off = 0) => p.seg(t0, t1, cols, -bend, -off) };
+  m.bar = (t, w, col, th = 1) => m.fill(t, t + th - 0.4, -w / 2, w / 2, () => col);
+  if (spec) spec.draw(m);
   // forearm: continues the grip axis down and out of frame, a little narrower than the fist
   p.fill(-26, -3.0, -3.0, 3.0, (t, s) => s > 2.2 ? VSKIN_D : s < -2.3 ? VSKIN_H : (t < -12 && s > 1.2) ? VSKIN_D : VSKIN);
   // the fist: four fingers wrapped across the handle, each with a rounded knuckle on the left, dark creases between
